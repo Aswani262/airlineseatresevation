@@ -1,6 +1,11 @@
 package com.airline.booking.repository;
 
-import com.airline.booking.application.command.dto.BookSeatCommand;
+import com.airline.booking.domain.model.Booking;
+import com.airline.booking.domain.model.BookingSeat;
+import com.airline.booking.domain.model.BookingStatus;
+import com.airline.booking.domain.model.FareClassCode;
+import com.airline.booking.domain.model.Passenger;
+import com.airline.booking.domain.model.PassengerType;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -10,13 +15,15 @@ import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.context.TestPropertySource;
 
 import java.math.BigDecimal;
-import java.sql.Timestamp;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 
+import static com.airline.flightmgmt.domain.FareClass.BUSINESS;
+import static com.airline.flightmgmt.domain.FareClass.ECONOMY;
 import static org.assertj.core.api.Assertions.*;
 
 @JdbcTest
@@ -51,6 +58,7 @@ class BookingJdbcRepositoryTest {
                 flight_id UUID NOT NULL,
                 customer_id UUID NOT NULL,
                 total_amount DECIMAL(12,2) NOT NULL,
+                currency VARCHAR(3) NOT NULL,
                 status VARCHAR(20) NOT NULL,
                 hold_expires_at TIMESTAMP WITH TIME ZONE NULL,
                 updated_at TIMESTAMP WITH TIME ZONE NULL
@@ -79,22 +87,28 @@ class BookingJdbcRepositoryTest {
     }
 
     @Test
-    void insertBooking_shouldInsertRow() {
+    void saveBooking_shouldInsertBookingRow() {
         UUID bookingId = UUID.randomUUID();
         UUID flightId = UUID.randomUUID();
         UUID customerId = UUID.randomUUID();
         OffsetDateTime holdExpiresAt = OffsetDateTime.of(2026, 2, 8, 10, 0, 0, 0, ZoneOffset.UTC);
 
-        repo.insertBooking(
-                bookingId,
-                "BR-001",
-                flightId,
-                customerId,
-                new BigDecimal("1234.50"),
-                "INR",                 // NOTE: currency not stored by current SQL
-                "DRAFT",
-                holdExpiresAt
-        );
+        Booking booking = Booking.builder()
+                .id(bookingId)
+                .bookingReference("BR-001")
+                .flightId(flightId)
+                .customerId(customerId)
+                .totalAmount(new BigDecimal("1234.50"))
+                .currency("INR")
+                .status(BookingStatus.DRAFT)
+                .holdExpiresAt(holdExpiresAt)
+                .bookingDate(null)
+                .passengers(new ArrayList<>())
+                .seats(new ArrayList<>())
+                .tickets(new ArrayList<>())
+                .build();
+
+        repo.saveBooking(booking);
 
         Map<String, Object> row = jdbcTemplate.queryForMap(
                 "SELECT * FROM bookings WHERE id = ?",
@@ -105,6 +119,7 @@ class BookingJdbcRepositoryTest {
         assertThat(row.get("flight_id")).isEqualTo(flightId);
         assertThat(row.get("customer_id")).isEqualTo(customerId);
         assertThat(((BigDecimal) row.get("total_amount"))).isEqualByComparingTo("1234.50");
+        assertThat(row.get("currency")).isEqualTo("INR");
         assertThat(row.get("status")).isEqualTo("DRAFT");
 
         // H2 returns TIMESTAMP WITH TIME ZONE as OffsetDateTime or Timestamp depending on driver/config.
@@ -113,37 +128,58 @@ class BookingJdbcRepositoryTest {
     }
 
     @Test
-    void insertPassengers_shouldInsertAndReturnGeneratedIds_andNormalizePassengerType() {
+    void saveBooking_shouldInsertPassengers() {
         UUID bookingId = UUID.randomUUID();
+        UUID flightId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
 
-        // Need booking row? Not required by your schema here (no FK), but ok either way.
-        repo.insertBooking(
-                bookingId, "BR-002", UUID.randomUUID(), UUID.randomUUID(),
-                new BigDecimal("10.00"), "INR", "DRAFT", null
-        );
+        UUID passengerId1 = UUID.randomUUID();
+        UUID passengerId2 = UUID.randomUUID();
 
-        var p1 = new BookSeatCommand.Passenger();
-        p1.setFirstName("  John ");
-        p1.setLastName(" Doe  ");
-        p1.setEmail("john@example.com");
-        p1.setPhone("999");
-        p1.setPassportNumber("P1");
-        p1.setPassengerType(" adult ");
+        List<Passenger> passengers = new ArrayList<>();
 
-        var p2 = new BookSeatCommand.Passenger();
-        p2.setFirstName(" Jane");
-        p2.setLastName("Roe ");
-        p2.setEmail(null);
-        p2.setPhone(null);
-        p2.setPassportNumber(null);
-        p2.setPassengerType("CHILD");
+        Passenger p1 = Passenger.builder()
+                .id(passengerId1)
+                .bookingId(bookingId)
+                .firstName("John")
+                .lastName("Doe")
+                .email("john@example.com")
+                .phone("999")
+                .passportNumber("P1")
+                .passengerType(PassengerType.ADULT)
+                .dateOfBirth(null)
+                .build();
+        passengers.add(p1);
 
-        List<UUID> ids = repo.insertPassengers(bookingId, List.of(p1, p2));
+        Passenger p2 = Passenger.builder()
+                .id(passengerId2)
+                .bookingId(bookingId)
+                .firstName("Jane")
+                .lastName("Roe")
+                .email(null)
+                .phone(null)
+                .passportNumber(null)
+                .passengerType(PassengerType.CHILD)
+                .dateOfBirth(null)
+                .build();
+        passengers.add(p2);
 
-        assertThat(ids).hasSize(2);
-        assertThat(ids.get(0)).isNotNull();
-        assertThat(ids.get(1)).isNotNull();
-        assertThat(ids.get(0)).isNotEqualTo(ids.get(1));
+        Booking booking = Booking.builder()
+                .id(bookingId)
+                .bookingReference("BR-002")
+                .flightId(flightId)
+                .customerId(customerId)
+                .totalAmount(new BigDecimal("10.00"))
+                .currency("INR")
+                .status(BookingStatus.DRAFT)
+                .holdExpiresAt(null)
+                .bookingDate(null)
+                .passengers(passengers)
+                .seats(new ArrayList<>())
+                .tickets(new ArrayList<>())
+                .build();
+
+        repo.saveBooking(booking);
 
         Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM passengers WHERE booking_id = ?",
@@ -152,53 +188,87 @@ class BookingJdbcRepositoryTest {
         );
         assertThat(count).isEqualTo(2);
 
-        // Verify normalization + trimming for names + passenger type uppercasing
+        // Verify data for first passenger
         Map<String, Object> row1 = jdbcTemplate.queryForMap(
                 "SELECT * FROM passengers WHERE id = ?",
-                ids.get(0)
+                passengerId1
         );
 
-        assertThat(row1.get("first_name")).isEqualTo("John"); // trimmed
-        assertThat(row1.get("last_name")).isEqualTo("Doe");   // trimmed
-        assertThat(row1.get("passenger_type")).isEqualTo("ADULT"); // uppercased
+        assertThat(row1.get("first_name")).isEqualTo("John");
+        assertThat(row1.get("last_name")).isEqualTo("Doe");
+        assertThat(row1.get("passenger_type")).isEqualTo("ADULT");
     }
 
     @Test
-    void insertBookingSeats_shouldInsertRows_andMapPassengerIndexCorrectly_andNormalizeFields() {
+    void saveBooking_shouldInsertBookingSeats() {
         UUID bookingId = UUID.randomUUID();
+        UUID flightId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
 
-        repo.insertBooking(
-                bookingId, "BR-003", UUID.randomUUID(), UUID.randomUUID(),
-                new BigDecimal("100.00"), "INR", "DRAFT", null
-        );
+        UUID passengerId1 = UUID.randomUUID();
+        UUID passengerId2 = UUID.randomUUID();
 
-        // Prepare two passengers
-        var p1 = new BookSeatCommand.Passenger();
-        p1.setFirstName("A");
-        p1.setLastName("B");
-        p1.setPassengerType("ADULT");
+        List<Passenger> passengers = new ArrayList<>();
 
-        var p2 = new BookSeatCommand.Passenger();
-        p2.setFirstName("C");
-        p2.setLastName("D");
-        p2.setPassengerType("CHILD");
+        Passenger p1 = Passenger.builder()
+                .id(passengerId1)
+                .bookingId(bookingId)
+                .firstName("A")
+                .lastName("B")
+                .passengerType(PassengerType.ADULT)
+                .build();
+        passengers.add(p1);
 
-        List<UUID> passengerIds = repo.insertPassengers(bookingId, List.of(p1, p2));
+        Passenger p2 = Passenger.builder()
+                .id(passengerId2)
+                .bookingId(bookingId)
+                .firstName("C")
+                .lastName("D")
+                .passengerType(PassengerType.CHILD)
+                .build();
+        passengers.add(p2);
 
-        // selections map passengerIndex -> passengerIds list
-        var s1 = new BookSeatCommand.SeatSelection();
-        s1.setPassengerIndex(0);
-        s1.setSeatNumber(" 12a ");           // will be trimmed + upper
-        s1.setFareClass(" economy ");        // will be trimmed + upper
-        s1.setPrice(new BigDecimal("500.00"));
+        UUID seatId1 = UUID.randomUUID();
+        UUID seatId2 = UUID.randomUUID();
 
-        var s2 = new BookSeatCommand.SeatSelection();
-        s2.setPassengerIndex(1);
-        s2.setSeatNumber("14B");
-        s2.setFareClass("BUSINESS");
-        s2.setPrice(new BigDecimal("700.00"));
+        List<BookingSeat> seats = new ArrayList<>();
+        ;
+        BookingSeat s1 = BookingSeat.builder()
+                .id(seatId1)
+                .bookingId(bookingId)
+                .passengerId(passengerId1)
+                .seatNumber("12A")
+                .fareClass(new FareClassCode(ECONOMY.name()))
+                .price(new BigDecimal("500.00"))
+                .build();
+        seats.add(s1);
 
-        repo.insertBookingSeats(bookingId, List.of(s1, s2), passengerIds);
+        BookingSeat s2 = BookingSeat.builder()
+                .id(seatId2)
+                .bookingId(bookingId)
+                .passengerId(passengerId2)
+                .seatNumber("14B")
+                .fareClass(new FareClassCode(BUSINESS.name()))
+                .price(new BigDecimal("700.00"))
+                .build();
+        seats.add(s2);
+
+        Booking booking = Booking.builder()
+                .id(bookingId)
+                .bookingReference("BR-003")
+                .flightId(flightId)
+                .customerId(customerId)
+                .totalAmount(new BigDecimal("100.00"))
+                .currency("INR")
+                .status(BookingStatus.DRAFT)
+                .holdExpiresAt(null)
+                .bookingDate(null)
+                .passengers(passengers)
+                .seats(seats)
+                .tickets(new ArrayList<>())
+                .build();
+
+        repo.saveBooking(booking);
 
         Integer count = jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM booking_seats WHERE booking_id = ?",
@@ -207,34 +277,48 @@ class BookingJdbcRepositoryTest {
         );
         assertThat(count).isEqualTo(2);
 
-        // verify seat 1 mapped to passengerIds[0]
+        // verify seat 1 mapped to passengerId1
         Map<String, Object> rowSeat1 = jdbcTemplate.queryForMap("""
             SELECT * FROM booking_seats
             WHERE booking_id = ? AND seat_number = ?
         """, bookingId, "12A");
 
-        assertThat(rowSeat1.get("passenger_id")).isEqualTo(passengerIds.get(0));
+        assertThat(rowSeat1.get("passenger_id")).isEqualTo(passengerId1);
         assertThat(rowSeat1.get("fare_class")).isEqualTo("ECONOMY");
         assertThat(((BigDecimal) rowSeat1.get("price"))).isEqualByComparingTo("500.00");
 
-        // verify seat 2 mapped to passengerIds[1]
+        // verify seat 2 mapped to passengerId2
         Map<String, Object> rowSeat2 = jdbcTemplate.queryForMap("""
             SELECT * FROM booking_seats
             WHERE booking_id = ? AND seat_number = ?
         """, bookingId, "14B");
 
-        assertThat(rowSeat2.get("passenger_id")).isEqualTo(passengerIds.get(1));
+        assertThat(rowSeat2.get("passenger_id")).isEqualTo(passengerId2);
         assertThat(rowSeat2.get("fare_class")).isEqualTo("BUSINESS");
     }
 
     @Test
     void updateStatus_shouldReturn1_whenFromStatusMatches_and0Otherwise() {
         UUID bookingId = UUID.randomUUID();
+        UUID flightId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
 
-        repo.insertBooking(
-                bookingId, "BR-004", UUID.randomUUID(), UUID.randomUUID(),
-                new BigDecimal("1.00"), "INR", "DRAFT", null
-        );
+        Booking booking = Booking.builder()
+                .id(bookingId)
+                .bookingReference("BR-004")
+                .flightId(flightId)
+                .customerId(customerId)
+                .totalAmount(new BigDecimal("1.00"))
+                .currency("INR")
+                .status(BookingStatus.DRAFT)
+                .holdExpiresAt(null)
+                .bookingDate(null)
+                .passengers(new ArrayList<>())
+                .seats(new ArrayList<>())
+                .tickets(new ArrayList<>())
+                .build();
+
+        repo.saveBooking(booking);
 
         OffsetDateTime t1 = OffsetDateTime.of(2026, 2, 8, 11, 0, 0, 0, ZoneOffset.UTC);
 

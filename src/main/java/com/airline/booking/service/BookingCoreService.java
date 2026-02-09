@@ -1,8 +1,12 @@
 package com.airline.booking.service;
 
-
 import com.airline.booking.application.command.dto.BookSeatCommand;
 import com.airline.booking.domain.model.Booking;
+import com.airline.booking.domain.model.BookingSeat;
+import com.airline.booking.domain.model.BookingStatus;
+import com.airline.booking.domain.model.FareClassCode;
+import com.airline.booking.domain.model.Passenger;
+import com.airline.booking.domain.model.PassengerType;
 import com.airline.shared.annoation.DomainService;
 import lombok.RequiredArgsConstructor;
 
@@ -10,7 +14,13 @@ import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Clock;
 import java.time.OffsetDateTime;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Locale;
+import java.util.Set;
+import java.util.UUID;
+
 //Core domain service that encapsulates the main booking logic, independent of infrastructure concerns
 //its middle path between rather putting domain logic in domain objects and having an anemic domain model with all logic in services.
 //It can be used by application services to perform booking operations without worrying about the underlying details.
@@ -21,13 +31,8 @@ public class BookingCoreService implements IBookingCoreService {
     private static final String ALPHANUM = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
     private static final SecureRandom RND = new SecureRandom();
 
-    private static final int REFERENCE_LENGTH = 6;
-    private static final SecureRandom random = new SecureRandom();
-
-
-
     @Override
-    public BookingDraft createDraft(BookSeatCommand cmd, int holdMinutes) {
+    public Booking createDraft(BookSeatCommand cmd) {
 
         //TODO:structural validation can be moved to a separate validator class if it grows more complex
         //and its should handle all validation errors and return them in a structured way instead of throwing on the first error
@@ -36,24 +41,60 @@ public class BookingCoreService implements IBookingCoreService {
 
         UUID bookingId = UUID.randomUUID();
         String reference = generateBookingRef8();
-        OffsetDateTime holdExpiresAt = OffsetDateTime.now(Clock.systemUTC()).plusMinutes(holdMinutes);
 
-        List<String> normalizedSeats = cmd.getSeatSelections().stream()
-                .map(s -> normalizeSeat(s.getSeatNumber()))
-                .toList();
+        List<Passenger> passengers = new ArrayList<>();
+        List<UUID> passengerIds = new ArrayList<>();
 
-        BigDecimal totalAmount = cmd.getSeatSelections().stream()
-                .map(BookSeatCommand.SeatSelection::getPrice)
+        for (var p : cmd.getPassengers()) {
+            UUID passengerId = UUID.randomUUID();
+            passengerIds.add(passengerId);
+            passengers.add(Passenger.builder()
+                    .id(passengerId)
+                    .bookingId(bookingId)
+                    .firstName(p.getFirstName().trim())
+                    .lastName(p.getLastName().trim())
+                    .email(p.getEmail())
+                    .phone(p.getPhone())
+                    .passportNumber(p.getPassportNumber())
+                    .dateOfBirth(null)  // Not provided in command; set to null or handle accordingly
+                    .passengerType(PassengerType.valueOf(p.getPassengerType().trim().toUpperCase(Locale.ROOT)))
+                    .build());
+        }
+
+        List<BookingSeat> seats = new ArrayList<>();
+        for (var sel : cmd.getSeatSelections()) {
+            UUID bookingSeatId = UUID.randomUUID();
+            UUID passengerId = passengerIds.get(sel.getPassengerIndex());
+            String normalizedSeat = normalizeSeat(sel.getSeatNumber());
+
+            seats.add(BookingSeat.builder()
+                    .id(bookingSeatId)
+                    .bookingId(bookingId)
+                    .passengerId(passengerId)
+                    .seatNumber(normalizedSeat)
+                    .fareClass(new FareClassCode(sel.getFareClass().trim().toUpperCase(Locale.ROOT)))
+                    .price(sel.getPrice())
+                    .build());
+        }
+
+        BigDecimal totalAmount = seats.stream()
+                .map(BookingSeat::getPrice)
                 .reduce(BigDecimal.ZERO, BigDecimal::add);
 
-        return new BookingDraft(
-                bookingId,
-                reference,
-                "DRAFT",
-                holdExpiresAt,
-                totalAmount,
-                normalizedSeats
-        );
+        return Booking.builder()
+                .id(bookingId)
+                .bookingReference(reference)
+                .flightId(cmd.getFlightId())
+                .customerId(cmd.getCustomerId())
+                .totalAmount(totalAmount)
+                .currency(cmd.getCurrency().trim().toUpperCase(Locale.ROOT))
+                .status(BookingStatus.DRAFT)
+                .bookingDate(OffsetDateTime.now(Clock.systemUTC()))
+                .holdExpiresAt(null)  // Set after seat locking
+                .passengers(passengers)
+                .seats(seats)
+                .tickets(new ArrayList<>())
+                .build();
     }
 
     private void validate(BookSeatCommand cmd) {
@@ -103,27 +144,4 @@ public class BookingCoreService implements IBookingCoreService {
         for (int i = 0; i < 8; i++) sb.append(ALPHANUM.charAt(RND.nextInt(ALPHANUM.length())));
         return sb.toString();
     }
-
-
-
-    /**
-     * Generate a random 6-character booking reference
-     * Format: ABC123
-     */
-    public String generate() {
-        StringBuilder reference = new StringBuilder(REFERENCE_LENGTH);
-        for (int i = 0; i < REFERENCE_LENGTH; i++) {
-            reference.append(ALPHANUM.charAt(random.nextInt(ALPHANUM.length())));
-        }
-        return reference.toString();
-    }
-
-    public record BookingDraft(
-            UUID bookingId,
-            String bookingReference,
-            String status,
-            OffsetDateTime holdExpiresAt,
-            BigDecimal totalAmount,
-            List<String> seatNumbers
-    ) {}
 }

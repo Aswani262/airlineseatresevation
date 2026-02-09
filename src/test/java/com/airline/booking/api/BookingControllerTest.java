@@ -44,6 +44,9 @@ class BookingControllerTest {
 
         when(bookSeatUseCase.book(any(BookSeatCommand.class))).thenReturn(result);
 
+        UUID flightId = UUID.randomUUID();
+        UUID customerId = UUID.randomUUID();
+
         // minimal valid payload (based on your DTO fields)
         String json = """
             {
@@ -69,7 +72,7 @@ class BookingControllerTest {
                 }
               ]
             }
-        """.formatted(UUID.randomUUID(), UUID.randomUUID());
+        """.formatted(flightId, customerId);
 
         mockMvc.perform(post("/api/v1/bookings/confirm")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -79,14 +82,27 @@ class BookingControllerTest {
                 .andExpect(jsonPath("$.bookingId").value(bookingId.toString()))
                 .andExpect(jsonPath("$.bookingReference").value("ABC12345"))
                 .andExpect(jsonPath("$.status").value("DRAFT"));
+               // .andExpect(jsonPath("$.expiresAt").value(hold.toString()));
 
         ArgumentCaptor<BookSeatCommand> captor = ArgumentCaptor.forClass(BookSeatCommand.class);
         verify(bookSeatUseCase).book(captor.capture());
 
         BookSeatCommand cmd = captor.getValue();
+        assertThat(cmd.getFlightId()).isEqualTo(flightId);
+        assertThat(cmd.getCustomerId()).isEqualTo(customerId);
         assertThat(cmd.getCurrency()).isEqualTo("inr"); // controller doesn't normalize
         assertThat(cmd.getPassengers()).hasSize(1);
+        assertThat(cmd.getPassengers().get(0).getFirstName()).isEqualTo("John");
+        assertThat(cmd.getPassengers().get(0).getLastName()).isEqualTo("Doe");
+        assertThat(cmd.getPassengers().get(0).getPassengerType()).isEqualTo("ADULT");
+        assertThat(cmd.getPassengers().get(0).getEmail()).isEqualTo("john@example.com");
+        assertThat(cmd.getPassengers().get(0).getPhone()).isEqualTo("999");
+        assertThat(cmd.getPassengers().get(0).getPassportNumber()).isEqualTo("P1");
         assertThat(cmd.getSeatSelections()).hasSize(1);
+        assertThat(cmd.getSeatSelections().get(0).getPassengerIndex()).isEqualTo(0);
+        assertThat(cmd.getSeatSelections().get(0).getSeatNumber()).isEqualTo("12A");
+        assertThat(cmd.getSeatSelections().get(0).getFareClass()).isEqualTo("ECONOMY");
+        assertThat(cmd.getSeatSelections().get(0).getPrice()).isEqualByComparingTo(BigDecimal.valueOf(500.00));
 
         verifyNoMoreInteractions(bookSeatUseCase);
         verifyNoInteractions(cancelBookingUseCase);

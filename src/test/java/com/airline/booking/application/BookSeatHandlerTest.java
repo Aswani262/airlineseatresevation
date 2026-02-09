@@ -3,6 +3,12 @@ package com.airline.booking.application;
 import com.airline.booking.api.dto.BookSeatResult;
 import com.airline.booking.application.command.BookSeatHandler;
 import com.airline.booking.application.command.dto.BookSeatCommand;
+import com.airline.booking.domain.model.Booking;
+import com.airline.booking.domain.model.BookingSeat;
+import com.airline.booking.domain.model.BookingStatus;
+import com.airline.booking.domain.model.FareClassCode;
+import com.airline.booking.domain.model.Passenger;
+import com.airline.booking.domain.model.PassengerType;
 import com.airline.booking.repository.BookingRepository;
 import com.airline.booking.service.BookingCoreService;
 import com.airline.booking.service.SeatInventoryService;
@@ -14,9 +20,11 @@ import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
+import static com.airline.flightmgmt.domain.FareClass.ECONOMY;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
@@ -62,15 +70,69 @@ class BookSeatHandlerTest {
         UUID bookingId = UUID.randomUUID();
         String bookingRef = "AB12CD34";
         OffsetDateTime holdExpiry = OffsetDateTime.of(2026, 2, 8, 12, 0, 0, 0, ZoneOffset.UTC);
+        OffsetDateTime bookingDate = OffsetDateTime.now(ZoneOffset.UTC);
 
-        var draft = new BookingCoreService.BookingDraft(
-                bookingId,
-                bookingRef,
-                "DRAFT",
-                holdExpiry.minusMinutes(5), // draft's holdExpiresAt is not used by handler
-                new BigDecimal("300"),
-                List.of("12A", "12B")
+        UUID passengerId1 = UUID.randomUUID();
+        UUID passengerId2 = UUID.randomUUID();
+
+        List<Passenger> passengers = List.of(
+                Passenger.builder()
+                        .id(passengerId1)
+                        .bookingId(bookingId)
+                        .firstName("A")
+                        .lastName("B")
+                        .passengerType(PassengerType.ADULT)
+                        .email(null)
+                        .phone(null)
+                        .passportNumber(null)
+                        .dateOfBirth(null)
+                        .build(),
+                Passenger.builder()
+                        .id(passengerId2)
+                        .bookingId(bookingId)
+                        .firstName("C")
+                        .lastName("D")
+                        .passengerType(PassengerType.CHILD)
+                        .email(null)
+                        .phone(null)
+                        .passportNumber(null)
+                        .dateOfBirth(null)
+                        .build()
         );
+
+        List<BookingSeat> seats = List.of(
+                BookingSeat.builder()
+                        .id(UUID.randomUUID())
+                        .bookingId(bookingId)
+                        .passengerId(passengerId1)
+                        .seatNumber("12A")
+                        .fareClass(new FareClassCode(ECONOMY.name()))
+                        .price(new BigDecimal("100"))
+                        .build(),
+                BookingSeat.builder()
+                        .id(UUID.randomUUID())
+                        .bookingId(bookingId)
+                        .passengerId(passengerId2)
+                        .seatNumber("12B")
+                        .fareClass(new FareClassCode(ECONOMY.name()))
+                        .price(new BigDecimal("200"))
+                        .build()
+        );
+
+        Booking booking = Booking.builder()
+                .id(bookingId)
+                .bookingReference(bookingRef)
+                .flightId(flightId)
+                .customerId(customerId)
+                .totalAmount(new BigDecimal("300"))
+                .currency("INR")
+                .status(BookingStatus.DRAFT)
+                .bookingDate(bookingDate)
+                .holdExpiresAt(null)
+                .passengers(passengers)
+                .seats(seats)
+                .tickets(new ArrayList<>())
+                .build();
 
         var lockResult = new SeatInventoryService.SeatLockResult(
                 true,
@@ -78,15 +140,12 @@ class BookSeatHandlerTest {
                 holdExpiry
         );
 
-        when(bookingCoreService.createDraft(eq(cmd), eq(10))).thenReturn(draft);
+        when(bookingCoreService.createDraft(eq(cmd))).thenReturn(booking);
         when(seatInventoryService.lockSeats(eq(flightId), eq(bookingId), eq(List.of("12A", "12B")), eq(Duration.ofMinutes(10))))
                 .thenReturn(lockResult);
 
         // ensureLockedOrThrow does not throw
         doNothing().when(seatInventoryService).ensureLockedOrThrow(lockResult);
-
-        List<UUID> passengerIds = List.of(UUID.randomUUID(), UUID.randomUUID());
-        when(bookingRepository.insertPassengers(eq(bookingId), eq(cmd.getPassengers()))).thenReturn(passengerIds);
 
         // When
         BookSeatResult result = handler.book(cmd);
@@ -98,24 +157,17 @@ class BookSeatHandlerTest {
         assertThat(result.holdExpiresAt()).isEqualTo(holdExpiry);
 
         // Then: interactions ordering (roughly)
-        verify(bookingCoreService).createDraft(cmd, 10);
+        verify(bookingCoreService).createDraft(cmd);
         verify(seatInventoryService).lockSeats(flightId, bookingId, List.of("12A", "12B"), Duration.ofMinutes(10));
         verify(seatInventoryService).ensureLockedOrThrow(lockResult);
 
-        // Then: booking insert args (currency normalized + hold expiry comes from lockResult)
-        verify(bookingRepository).insertBooking(
-                eq(bookingId),
-                eq(bookingRef),
-                eq(flightId),
-                eq(customerId),
-                eq(new BigDecimal("300")),
-                eq("INR"),
-                eq("DRAFT"),
-                eq(holdExpiry)
-        );
+        // Then: save booking (currency normalized + hold expiry comes from lockResult)
+        ArgumentCaptor<Booking> bookingCaptor = ArgumentCaptor.forClass(Booking.class);
+        verify(bookingRepository).saveBooking(bookingCaptor.capture());
 
-        verify(bookingRepository).insertPassengers(bookingId, cmd.getPassengers());
-        verify(bookingRepository).insertBookingSeats(bookingId, cmd.getSeatSelections(), passengerIds);
+        Booking capturedBooking = bookingCaptor.getValue();
+        assertThat(capturedBooking.getCurrency()).isEqualTo("INR");
+        assertThat(capturedBooking.getHoldExpiresAt()).isEqualTo(holdExpiry);
 
         verifyNoMoreInteractions(bookingCoreService, seatInventoryService, bookingRepository);
     }
@@ -136,15 +188,49 @@ class BookSeatHandlerTest {
                 .build();
 
         UUID bookingId = UUID.randomUUID();
+        OffsetDateTime bookingDate = OffsetDateTime.now(ZoneOffset.UTC);
 
-        var draft = new BookingCoreService.BookingDraft(
-                bookingId,
-                "AB12CD34",
-                "DRAFT",
-                OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(10),
-                BigDecimal.TEN,
-                List.of("12A")
+        UUID passengerId = UUID.randomUUID();
+
+        List<Passenger> passengers = List.of(
+                Passenger.builder()
+                        .id(passengerId)
+                        .bookingId(bookingId)
+                        .firstName("A")
+                        .lastName("B")
+                        .passengerType(PassengerType.ADULT)
+                        .email(null)
+                        .phone(null)
+                        .passportNumber(null)
+                        .dateOfBirth(null)
+                        .build()
         );
+
+        List<BookingSeat> seats = List.of(
+                BookingSeat.builder()
+                        .id(UUID.randomUUID())
+                        .bookingId(bookingId)
+                        .passengerId(passengerId)
+                        .seatNumber("12A")
+                        .fareClass(new FareClassCode(ECONOMY.name()))
+                        .price(BigDecimal.TEN)
+                        .build()
+        );
+
+        Booking booking = Booking.builder()
+                .id(bookingId)
+                .bookingReference("AB12CD34")
+                .flightId(flightId)
+                .customerId(customerId)
+                .totalAmount(BigDecimal.TEN)
+                .currency("INR")
+                .status(BookingStatus.DRAFT)
+                .bookingDate(bookingDate)
+                .holdExpiresAt(null)
+                .passengers(passengers)
+                .seats(seats)
+                .tickets(new ArrayList<>())
+                .build();
 
         var lockResult = new SeatInventoryService.SeatLockResult(
                 false,
@@ -152,7 +238,7 @@ class BookSeatHandlerTest {
                 OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(10)
         );
 
-        when(bookingCoreService.createDraft(eq(cmd), eq(10))).thenReturn(draft);
+        when(bookingCoreService.createDraft(eq(cmd))).thenReturn(booking);
         when(seatInventoryService.lockSeats(eq(flightId), eq(bookingId), eq(List.of("12A")), eq(Duration.ofMinutes(10))))
                 .thenReturn(lockResult);
 
@@ -169,7 +255,7 @@ class BookSeatHandlerTest {
         verifyNoInteractions(bookingRepository);
 
         // core service + seat service should be called up to the point of failure
-        verify(bookingCoreService).createDraft(cmd, 10);
+        verify(bookingCoreService).createDraft(cmd);
         verify(seatInventoryService).lockSeats(flightId, bookingId, List.of("12A"), Duration.ofMinutes(10));
         verify(seatInventoryService).ensureLockedOrThrow(lockResult);
 
@@ -192,42 +278,65 @@ class BookSeatHandlerTest {
                 .build();
 
         UUID bookingId = UUID.randomUUID();
-        var draft = new BookingCoreService.BookingDraft(
-                bookingId, "AB12CD34", "DRAFT",
-                OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(10),
-                BigDecimal.ONE,
-                List.of("12A")
+        OffsetDateTime bookingDate = OffsetDateTime.now(ZoneOffset.UTC);
+
+        UUID passengerId = UUID.randomUUID();
+
+        List<Passenger> passengers = List.of(
+                Passenger.builder()
+                        .id(passengerId)
+                        .bookingId(bookingId)
+                        .firstName("A")
+                        .lastName("B")
+                        .passengerType(PassengerType.ADULT)
+                        .email(null)
+                        .phone(null)
+                        .passportNumber(null)
+                        .dateOfBirth(null)
+                        .build()
         );
+
+        List<BookingSeat> seats = List.of(
+                BookingSeat.builder()
+                        .id(UUID.randomUUID())
+                        .bookingId(bookingId)
+                        .passengerId(passengerId)
+                        .seatNumber("12A")
+                        .fareClass(new FareClassCode(ECONOMY.name()))
+                        .price(BigDecimal.ONE)
+                        .build()
+        );
+
+        Booking booking = Booking.builder()
+                .id(bookingId)
+                .bookingReference("AB12CD34")
+                .flightId(flightId)
+                .customerId(customerId)
+                .totalAmount(BigDecimal.ONE)
+                .currency("USD")
+                .status(BookingStatus.DRAFT)
+                .bookingDate(bookingDate)
+                .holdExpiresAt(null)
+                .passengers(passengers)
+                .seats(seats)
+                .tickets(new ArrayList<>())
+                .build();
 
         OffsetDateTime expiry = OffsetDateTime.now(ZoneOffset.UTC).plusMinutes(10);
         var lockResult = new SeatInventoryService.SeatLockResult(true, List.of("12A"), expiry);
 
-        when(bookingCoreService.createDraft(eq(cmd), eq(10))).thenReturn(draft);
+        when(bookingCoreService.createDraft(eq(cmd))).thenReturn(booking);
         when(seatInventoryService.lockSeats(eq(flightId), eq(bookingId), eq(List.of("12A")), eq(Duration.ofMinutes(10))))
                 .thenReturn(lockResult);
         doNothing().when(seatInventoryService).ensureLockedOrThrow(lockResult);
-
-        when(bookingRepository.insertPassengers(eq(bookingId), anyList()))
-                .thenReturn(List.of(UUID.randomUUID()));
-
-        // capture currency argument
-        ArgumentCaptor<String> currencyCaptor = ArgumentCaptor.forClass(String.class);
 
         // When
         handler.book(cmd);
 
         // Then
-        verify(bookingRepository).insertBooking(
-                eq(bookingId),
-                eq(draft.bookingReference()),
-                eq(flightId),
-                eq(customerId),
-                eq(draft.totalAmount()),
-                currencyCaptor.capture(),
-                eq(draft.status()),
-                eq(expiry)
-        );
+        ArgumentCaptor<Booking> bookingCaptor = ArgumentCaptor.forClass(Booking.class);
+        verify(bookingRepository).saveBooking(bookingCaptor.capture());
 
-        assertThat(currencyCaptor.getValue()).isEqualTo("USD");
+        assertThat(bookingCaptor.getValue().getCurrency()).isEqualTo("USD");
     }
 }

@@ -2,14 +2,17 @@ package com.airline.booking.application.command;
 
 import com.airline.booking.api.dto.BookSeatResult;
 import com.airline.booking.application.command.dto.BookSeatCommand;
+import com.airline.booking.domain.model.BookingSeat;
 import com.airline.booking.service.SeatInventoryService;
 import com.airline.booking.repository.BookingRepository;
 import com.airline.booking.service.BookingCoreService;
+import com.airline.booking.domain.model.Booking;
 import com.airline.shared.annoation.ApplicationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+
 //Application service orchestrating the booking process, coordinating between domain services and repositories.
 // It handles the main flow of booking a seat, including creating a draft, locking seats, and persisting the booking.
 @ApplicationService
@@ -29,44 +32,27 @@ public class BookSeatHandler implements BookSeatUseCase {
     public BookSeatResult book(BookSeatCommand command) {
 
         // 1) Draft booking data (validation, totals, seat normalization done here or in seat service)
-        var draft = bookingCoreService.createDraft(command, HOLD_MINUTES);
+        Booking booking = bookingCoreService.createDraft(command);
 
         // 2) Lock seats (core/domain service)
         var lockResult = seatInventoryService.lockSeats(
                 command.getFlightId(),
-                draft.bookingId(),
-                draft.seatNumbers(),
+                booking.getId(),
+                booking.getSeats().stream().map(BookingSeat::getSeatNumber).toList(),
                 HOLD_TTL
         );
         seatInventoryService.ensureLockedOrThrow(lockResult);
 
-        //TODO: Rather inserting booking using parameter method, pass domain entity and let repository map save it or map with persistence model
-        //TODO: change name from insert booking to save booking,
-        // as it can be insert or update based on the existence of bookingId in DB.
-        // This will also help in confirm booking use case where we need to update the status from DRAFT to CONFIRMED
-        //TODO: Need to change everywhere in code base to use saveBooking instead of insertBooking for better clarity and consistency.
+        // Set the hold expiration from the lock result
+        booking.setHoldExpiresAt(lockResult.expiresAt());
 
         // 3) Persist booking aggregate
-        bookingRepository.insertBooking(
-                draft.bookingId(),
-                draft.bookingReference(),
-                command.getFlightId(),
-                command.getCustomerId(),
-                draft.totalAmount(),
-                command.getCurrency().trim().toUpperCase(),
-                draft.status(),
-                lockResult.expiresAt() // use lock expiry as hold expiry
-        );
-
-        //TODO:We should put the passenger and seat in booking domain model and let the repository handle the persistence of the whole aggregate instead of having separate calls for passengers and seats.
-        var passengerIds = bookingRepository.insertPassengers(draft.bookingId(), command.getPassengers());
-
-        bookingRepository.insertBookingSeats(draft.bookingId(), command.getSeatSelections(), passengerIds);
+        bookingRepository.saveBooking(booking);
 
         return new BookSeatResult(
-                draft.bookingId(),
-                draft.bookingReference(),
-                draft.status(),
+                booking.getId(),
+                booking.getBookingReference(),
+                booking.getStatus().toString(),
                 lockResult.expiresAt()
         );
     }

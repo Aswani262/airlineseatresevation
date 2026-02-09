@@ -1,12 +1,17 @@
 package com.airline.booking.servcie;
 
 import com.airline.booking.application.command.dto.BookSeatCommand;
+import com.airline.booking.domain.model.Booking;
+import com.airline.booking.domain.model.BookingSeat;
+import com.airline.booking.domain.model.BookingStatus;
+import com.airline.booking.domain.model.FareClassCode;
+import com.airline.booking.domain.model.Passenger;
+import com.airline.booking.domain.model.PassengerType;
 import com.airline.booking.service.BookingCoreService;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
 
@@ -14,224 +19,264 @@ import static org.assertj.core.api.Assertions.*;
 
 class BookingCoreServiceTest {
 
-    private final BookingCoreService service = new BookingCoreService();
+    private BookingCoreService service;
+
+    @BeforeEach
+    void setup() {
+        service = new BookingCoreService();
+    }
 
     @Test
-    void createDraft_shouldCreateDraft_withNormalizedSeatsAndTotalAmount() {
+    void createDraft_shouldBuildValidBooking_whenCommandIsValid() {
+        // Given
         UUID flightId = UUID.randomUUID();
         UUID customerId = UUID.randomUUID();
 
-        BookSeatCommand cmd = validCommand(flightId, customerId,
-                List.of(
-                        seatSel(0, " 12a ", "economy", new BigDecimal("100.00")),
-                        seatSel(1, "14B", "economy", new BigDecimal("250.50"))
-                ),
-                List.of(
-                        passenger("John", "Doe", "ADULT"),
-                        passenger("Jane", "Roe", "CHILD")
-                ),
-                "INR"
-        );
+        BookSeatCommand.Passenger p1 = BookSeatCommand.Passenger.builder()
+                .firstName("  John  ")
+                .lastName("  Doe  ")
+                .email("john@example.com")
+                .phone("1234567890")
+                .passportNumber("P12345")
+                .passengerType(" adult ")
+                .build();
 
-        OffsetDateTime before = OffsetDateTime.now(java.time.Clock.systemUTC());
+        BookSeatCommand.Passenger p2 = BookSeatCommand.Passenger.builder()
+                .firstName("Jane")
+                .lastName("Roe")
+                .passengerType("Child")
+                .build();  // email, phone, passport null
 
-        var draft = service.createDraft(cmd, 10);
+        BookSeatCommand.SeatSelection s1 = BookSeatCommand.SeatSelection.builder()
+                .passengerIndex(0)
+                .seatNumber(" 12a ")
+                .fareClass(" economy ")
+                .price(new BigDecimal("100.00"))
+                .build();
 
-        OffsetDateTime after = OffsetDateTime.now(java.time.Clock.systemUTC());
+        BookSeatCommand.SeatSelection s2 = BookSeatCommand.SeatSelection.builder()
+                .passengerIndex(1)
+                .seatNumber("14B")
+                .fareClass("Business")
+                .price(new BigDecimal("200.00"))
+                .build();
 
-        assertThat(draft.bookingId()).isNotNull();
-        assertThat(draft.status()).isEqualTo("DRAFT");
+        BookSeatCommand cmd = BookSeatCommand.builder()
+                .flightId(flightId)
+                .customerId(customerId)
+                .currency("  inr  ")
+                .passengers(List.of(p1, p2))
+                .seatSelections(List.of(s1, s2))
+                .build();
 
-        // booking reference should be 8 chars and only from ALPHANUM set
-        assertThat(draft.bookingReference()).hasSize(8);
-        assertThat(draft.bookingReference()).matches("[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{8}");
+        // When
+        Booking booking = service.createDraft(cmd);
 
-        assertThat(draft.seatNumbers()).containsExactly("12A", "14B");
+        // Then
+        assertThat(booking).isNotNull();
+        assertThat(booking.getId()).isNotNull();
+        assertThat(booking.getBookingReference()).hasSize(8)
+                .matches("[A-Z0-9]+");  // From ALPHANUM, uppercase letters and digits 2-9 excluding 0,1,I,O
 
-        assertThat(draft.totalAmount()).isEqualByComparingTo(new BigDecimal("350.50"));
+        assertThat(booking.getFlightId()).isEqualTo(flightId);
+        assertThat(booking.getCustomerId()).isEqualTo(customerId);
+        assertThat(booking.getTotalAmount()).isEqualByComparingTo("300.00");
+        assertThat(booking.getCurrency()).isEqualTo("INR");  // normalized
+        assertThat(booking.getStatus()).isEqualTo(BookingStatus.DRAFT);
+        assertThat(booking.getBookingDate()).isNotNull();  // approximately now
+        assertThat(booking.getHoldExpiresAt()).isNull();
+        assertThat(booking.getTickets()).isEmpty();
 
-        // holdExpiresAt should be about now + 10 minutes
-        OffsetDateTime expectedMin = before.plusMinutes(10).minusSeconds(2);
-        OffsetDateTime expectedMax = after.plusMinutes(10).plusSeconds(2);
+        // Passengers
+        List<Passenger> passengers = booking.getPassengers();
+        assertThat(passengers).hasSize(2);
 
-        assertThat(draft.holdExpiresAt()).isAfterOrEqualTo(expectedMin);
-        assertThat(draft.holdExpiresAt()).isBeforeOrEqualTo(expectedMax);
+        Passenger passenger1 = passengers.get(0);
+        assertThat(passenger1.getId()).isNotNull();
+        assertThat(passenger1.getBookingId()).isEqualTo(booking.getId());
+        assertThat(passenger1.getFirstName()).isEqualTo("John");  // trimmed
+        assertThat(passenger1.getLastName()).isEqualTo("Doe");    // trimmed
+        assertThat(passenger1.getEmail()).isEqualTo("john@example.com");
+        assertThat(passenger1.getPhone()).isEqualTo("1234567890");
+        assertThat(passenger1.getPassportNumber()).isEqualTo("P12345");
+        assertThat(passenger1.getDateOfBirth()).isNull();
+        assertThat(passenger1.getPassengerType()).isEqualTo(PassengerType.ADULT);  // normalized
+
+        Passenger passenger2 = passengers.get(1);
+        assertThat(passenger2.getId()).isNotNull();
+        assertThat(passenger2.getBookingId()).isEqualTo(booking.getId());
+        assertThat(passenger2.getFirstName()).isEqualTo("Jane");
+        assertThat(passenger2.getLastName()).isEqualTo("Roe");
+        assertThat(passenger2.getEmail()).isNull();
+        assertThat(passenger2.getPhone()).isNull();
+        assertThat(passenger2.getPassportNumber()).isNull();
+        assertThat(passenger2.getDateOfBirth()).isNull();
+        assertThat(passenger2.getPassengerType()).isEqualTo(PassengerType.CHILD);  // normalized
+
+        // Seats
+        List<BookingSeat> seats = booking.getSeats();
+        assertThat(seats).hasSize(2);
+
+        BookingSeat seat1 = seats.get(0);
+        assertThat(seat1.getId()).isNotNull();
+        assertThat(seat1.getBookingId()).isEqualTo(booking.getId());
+        assertThat(seat1.getPassengerId()).isEqualTo(passenger1.getId());
+        assertThat(seat1.getSeatNumber()).isEqualTo("12A");  // normalized
+        assertThat(seat1.getFareClass()).isEqualTo(new FareClassCode("ECONOMY"));  // normalized
+        assertThat(seat1.getPrice()).isEqualByComparingTo("100.00");
+
+        BookingSeat seat2 = seats.get(1);
+        assertThat(seat2.getId()).isNotNull();
+        assertThat(seat2.getBookingId()).isEqualTo(booking.getId());
+        assertThat(seat2.getPassengerId()).isEqualTo(passenger2.getId());
+        assertThat(seat2.getSeatNumber()).isEqualTo("14B");
+        assertThat(seat2.getFareClass()).isEqualTo(new FareClassCode("BUSINESS"));  // normalized
+        assertThat(seat2.getPrice()).isEqualByComparingTo("200.00");
     }
 
     @Test
-    void createDraft_shouldRejectNullCommand() {
-        assertThatThrownBy(() -> service.createDraft(null, 10))
+    void createDraft_shouldThrowIllegalArgumentException_whenCommandIsNull() {
+        assertThatThrownBy(() -> service.createDraft(null))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("command is required");
+                .hasMessage("command is required");
     }
 
     @Test
-    void createDraft_shouldRejectMissingFlightId() {
-        BookSeatCommand cmd = validCommand(null, UUID.randomUUID(),
-                List.of(seatSel(0, "12A", "ECONOMY", BigDecimal.ONE)),
-                List.of(passenger("A", "B", "ADULT")),
-                "INR"
-        );
+    void createDraft_shouldThrowIllegalArgumentException_whenFlightIdIsNull() {
+        BookSeatCommand cmd = BookSeatCommand.builder()
+                .customerId(UUID.randomUUID())
+                .currency("INR")
+                .passengers(List.of(BookSeatCommand.Passenger.builder().firstName("A").lastName("B").passengerType("ADULT").build()))
+                .seatSelections(List.of(BookSeatCommand.SeatSelection.builder().passengerIndex(0).seatNumber("12A").fareClass("ECONOMY").price(BigDecimal.TEN).build()))
+                .build();
 
-        assertThatThrownBy(() -> service.createDraft(cmd, 10))
+        assertThatThrownBy(() -> service.createDraft(cmd))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("flightId is required");
+                .hasMessage("flightId is required");
     }
 
     @Test
-    void createDraft_shouldRejectMissingCustomerId() {
-        BookSeatCommand cmd = validCommand(UUID.randomUUID(), null,
-                List.of(seatSel(0, "12A", "ECONOMY", BigDecimal.ONE)),
-                List.of(passenger("A", "B", "ADULT")),
-                "INR"
-        );
+    void createDraft_shouldThrowIllegalArgumentException_whenCustomerIdIsNull() {
+        BookSeatCommand cmd = BookSeatCommand.builder()
+                .flightId(UUID.randomUUID())
+                .currency("INR")
+                .passengers(List.of(BookSeatCommand.Passenger.builder().firstName("A").lastName("B").passengerType("ADULT").build()))
+                .seatSelections(List.of(BookSeatCommand.SeatSelection.builder().passengerIndex(0).seatNumber("12A").fareClass("ECONOMY").price(BigDecimal.TEN).build()))
+                .build();
 
-        assertThatThrownBy(() -> service.createDraft(cmd, 10))
+        assertThatThrownBy(() -> service.createDraft(cmd))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("customerId is required");
+                .hasMessage("customerId is required");
     }
 
     @Test
-    void createDraft_shouldRejectBlankCurrency() {
-        BookSeatCommand cmd = validCommand(UUID.randomUUID(), UUID.randomUUID(),
-                List.of(seatSel(0, "12A", "ECONOMY", BigDecimal.ONE)),
-                List.of(passenger("A", "B", "ADULT")),
-                "   "
-        );
+    void createDraft_shouldThrowIllegalArgumentException_whenCurrencyIsBlank() {
+        BookSeatCommand cmd = BookSeatCommand.builder()
+                .flightId(UUID.randomUUID())
+                .customerId(UUID.randomUUID())
+                .currency("   ")
+                .passengers(List.of(BookSeatCommand.Passenger.builder().firstName("A").lastName("B").passengerType("ADULT").build()))
+                .seatSelections(List.of(BookSeatCommand.SeatSelection.builder().passengerIndex(0).seatNumber("12A").fareClass("ECONOMY").price(BigDecimal.TEN).build()))
+                .build();
 
-        assertThatThrownBy(() -> service.createDraft(cmd, 10))
+        assertThatThrownBy(() -> service.createDraft(cmd))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("currency is required");
+                .hasMessage("currency is required");
     }
 
     @Test
-    void createDraft_shouldRejectEmptyPassengers() {
-        BookSeatCommand cmd = validCommand(UUID.randomUUID(), UUID.randomUUID(),
-                List.of(seatSel(0, "12A", "ECONOMY", BigDecimal.ONE)),
-                List.of(),
-                "INR"
-        );
+    void createDraft_shouldThrowIllegalArgumentException_whenPassengersIsEmpty() {
+        BookSeatCommand cmd = BookSeatCommand.builder()
+                .flightId(UUID.randomUUID())
+                .customerId(UUID.randomUUID())
+                .currency("INR")
+                .passengers(List.of())
+                .seatSelections(List.of(BookSeatCommand.SeatSelection.builder().passengerIndex(0).seatNumber("12A").fareClass("ECONOMY").price(BigDecimal.TEN).build()))
+                .build();
 
-        assertThatThrownBy(() -> service.createDraft(cmd, 10))
+        assertThatThrownBy(() -> service.createDraft(cmd))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("passengers is required");
+                .hasMessage("passengers is required");
     }
 
     @Test
-    void createDraft_shouldRejectEmptySeatSelections() {
-        BookSeatCommand cmd = validCommand(UUID.randomUUID(), UUID.randomUUID(),
-                List.of(),
-                List.of(passenger("A", "B", "ADULT")),
-                "INR"
-        );
+    void createDraft_shouldThrowIllegalArgumentException_whenSeatSelectionsIsEmpty() {
+        BookSeatCommand cmd = BookSeatCommand.builder()
+                .flightId(UUID.randomUUID())
+                .customerId(UUID.randomUUID())
+                .currency("INR")
+                .passengers(List.of(BookSeatCommand.Passenger.builder().firstName("A").lastName("B").passengerType("ADULT").build()))
+                .seatSelections(List.of())
+                .build();
 
-        assertThatThrownBy(() -> service.createDraft(cmd, 10))
+        assertThatThrownBy(() -> service.createDraft(cmd))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("seatSelections is required");
+                .hasMessage("seatSelections is required");
     }
 
     @Test
-    void createDraft_shouldRejectPassengerIndexOutOfRange_negative() {
-        BookSeatCommand cmd = validCommand(UUID.randomUUID(), UUID.randomUUID(),
-                List.of(seatSel(-1, "12A", "ECONOMY", BigDecimal.ONE)),
-                List.of(passenger("A", "B", "ADULT")),
-                "INR"
-        );
+    void createDraft_shouldThrowIllegalArgumentException_whenPassengerIndexInvalid() {
+        BookSeatCommand cmd = BookSeatCommand.builder()
+                .flightId(UUID.randomUUID())
+                .customerId(UUID.randomUUID())
+                .currency("INR")
+                .passengers(List.of(BookSeatCommand.Passenger.builder().firstName("A").lastName("B").passengerType("ADULT").build()))
+                .seatSelections(List.of(BookSeatCommand.SeatSelection.builder().passengerIndex(1).seatNumber("12A").fareClass("ECONOMY").price(BigDecimal.TEN).build()))  // index 1 out of bounds
+                .build();
 
-        assertThatThrownBy(() -> service.createDraft(cmd, 10))
+        assertThatThrownBy(() -> service.createDraft(cmd))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Invalid passengerIndex");
+                .hasMessage("Invalid passengerIndex: 1");
     }
 
     @Test
-    void createDraft_shouldRejectPassengerIndexOutOfRange_tooLarge() {
-        BookSeatCommand cmd = validCommand(UUID.randomUUID(), UUID.randomUUID(),
-                List.of(seatSel(1, "12A", "ECONOMY", BigDecimal.ONE)), // only 1 passenger => index 1 invalid
-                List.of(passenger("A", "B", "ADULT")),
-                "INR"
-        );
+    void createDraft_shouldThrowIllegalArgumentException_whenSeatNumberBlank() {
+        BookSeatCommand cmd = BookSeatCommand.builder()
+                .flightId(UUID.randomUUID())
+                .customerId(UUID.randomUUID())
+                .currency("INR")
+                .passengers(List.of(BookSeatCommand.Passenger.builder().firstName("A").lastName("B").passengerType("ADULT").build()))
+                .seatSelections(List.of(BookSeatCommand.SeatSelection.builder().passengerIndex(0).seatNumber("   ").fareClass("ECONOMY").price(BigDecimal.TEN).build()))
+                .build();
 
-        assertThatThrownBy(() -> service.createDraft(cmd, 10))
+        assertThatThrownBy(() -> service.createDraft(cmd))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Invalid passengerIndex");
+                .hasMessage("seatNumber is required");
     }
 
     @Test
-    void createDraft_shouldRejectBlankSeatNumber() {
-        BookSeatCommand cmd = validCommand(UUID.randomUUID(), UUID.randomUUID(),
-                List.of(seatSel(0, "   ", "ECONOMY", BigDecimal.ONE)),
-                List.of(passenger("A", "B", "ADULT")),
-                "INR"
-        );
+    void createDraft_shouldThrowIllegalArgumentException_whenPriceNegative() {
+        BookSeatCommand cmd = BookSeatCommand.builder()
+                .flightId(UUID.randomUUID())
+                .customerId(UUID.randomUUID())
+                .currency("INR")
+                .passengers(List.of(BookSeatCommand.Passenger.builder().firstName("A").lastName("B").passengerType("ADULT").build()))
+                .seatSelections(List.of(BookSeatCommand.SeatSelection.builder().passengerIndex(0).seatNumber("12A").fareClass("ECONOMY").price(new BigDecimal("-10")).build()))
+                .build();
 
-        assertThatThrownBy(() -> service.createDraft(cmd, 10))
+        assertThatThrownBy(() -> service.createDraft(cmd))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("seatNumber is required");
+                .hasMessage("Invalid seat price");
     }
 
     @Test
-    void createDraft_shouldRejectNegativeSeatPrice() {
-        BookSeatCommand cmd = validCommand(UUID.randomUUID(), UUID.randomUUID(),
-                List.of(seatSel(0, "12A", "ECONOMY", new BigDecimal("-1.00"))),
-                List.of(passenger("A", "B", "ADULT")),
-                "INR"
-        );
+    void createDraft_shouldThrowIllegalArgumentException_whenDuplicateSeats() {
+        BookSeatCommand cmd = BookSeatCommand.builder()
+                .flightId(UUID.randomUUID())
+                .customerId(UUID.randomUUID())
+                .currency("INR")
+                .passengers(List.of(
+                        BookSeatCommand.Passenger.builder().firstName("A").lastName("B").passengerType("ADULT").build(),
+                        BookSeatCommand.Passenger.builder().firstName("C").lastName("D").passengerType("ADULT").build()
+                ))
+                .seatSelections(List.of(
+                        BookSeatCommand.SeatSelection.builder().passengerIndex(0).seatNumber("12a").fareClass("ECONOMY").price(BigDecimal.TEN).build(),
+                        BookSeatCommand.SeatSelection.builder().passengerIndex(1).seatNumber(" 12A ").fareClass("ECONOMY").price(BigDecimal.TEN).build()  // duplicate after normalize
+                ))
+                .build();
 
-        assertThatThrownBy(() -> service.createDraft(cmd, 10))
+        assertThatThrownBy(() -> service.createDraft(cmd))
                 .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Invalid seat price");
-    }
-
-    @Test
-    void createDraft_shouldRejectDuplicateSeats_afterNormalization() {
-        BookSeatCommand cmd = validCommand(UUID.randomUUID(), UUID.randomUUID(),
-                List.of(
-                        seatSel(0, "12a", "ECONOMY", BigDecimal.ONE),
-                        seatSel(0, " 12A ", "ECONOMY", BigDecimal.ONE)
-                ),
-                List.of(passenger("A", "B", "ADULT")),
-                "INR"
-        );
-
-        assertThatThrownBy(() -> service.createDraft(cmd, 10))
-                .isInstanceOf(IllegalArgumentException.class)
-                .hasMessageContaining("Duplicate seat in request: 12A");
-    }
-
-    // -----------------------
-    // Helpers (adjust if your DTO differs)
-    // -----------------------
-
-    private static BookSeatCommand validCommand(
-            UUID flightId,
-            UUID customerId,
-            List<BookSeatCommand.SeatSelection> selections,
-            List<BookSeatCommand.Passenger> passengers,
-            String currency
-    ) {
-        BookSeatCommand cmd = new BookSeatCommand();
-        cmd.setFlightId(flightId);
-        cmd.setCustomerId(customerId);
-        cmd.setCurrency(currency);
-        cmd.setSeatSelections(new ArrayList<>(selections));
-        cmd.setPassengers(new ArrayList<>(passengers));
-        return cmd;
-    }
-
-    private static BookSeatCommand.SeatSelection seatSel(Integer passengerIndex, String seatNumber, String fareClass, BigDecimal price) {
-        BookSeatCommand.SeatSelection s = new BookSeatCommand.SeatSelection();
-        s.setPassengerIndex(passengerIndex);
-        s.setSeatNumber(seatNumber);
-        s.setFareClass(fareClass);
-        s.setPrice(price);
-        return s;
-    }
-
-    private static BookSeatCommand.Passenger passenger(String first, String last, String type) {
-        BookSeatCommand.Passenger p = new BookSeatCommand.Passenger();
-        p.setFirstName(first);
-        p.setLastName(last);
-        p.setPassengerType(type);
-        return p;
+                .hasMessage("Duplicate seat in request: 12A");
     }
 }

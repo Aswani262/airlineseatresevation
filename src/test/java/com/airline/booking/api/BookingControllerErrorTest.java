@@ -89,7 +89,10 @@ class BookingControllerErrorTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.message").value("One or more seats are not available"));
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.message").value("One or more seats are not available"))
+                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.details").doesNotExist());
 
         verify(bookSeatUseCase).book(any());
         verifyNoInteractions(cancelBookingUseCase);
@@ -98,17 +101,18 @@ class BookingControllerErrorTest {
     @Test
     void cancel_shouldReturn400_whenUseCaseThrowsIllegalArgumentException() throws Exception {
         when(cancelBookingUseCase.cancel(any()))
-                .thenThrow(new IllegalArgumentException("bookingId is required"));
+                .thenThrow(new IllegalArgumentException("reason is required"));
 
-        String json = """
-            { "reason": "changed my mind" }
-        """;
+        String json = "{}";
 
         mockMvc.perform(post("/api/v1/bookings/{bookingId}/cancel", "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(json))
                 .andExpect(status().isBadRequest())
-                .andExpect(jsonPath("$.message").value("bookingId is required"));
+                .andExpect(content().contentTypeCompatibleWith(MediaType.APPLICATION_JSON))
+                .andExpect(jsonPath("$.message").value("reason is required"))
+                .andExpect(jsonPath("$.code").doesNotExist())
+                .andExpect(jsonPath("$.details").doesNotExist());
 
         verify(cancelBookingUseCase).cancel(any());
         verifyNoInteractions(bookSeatUseCase);
