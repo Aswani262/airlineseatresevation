@@ -1,6 +1,6 @@
 package com.airline.payment.service;
 
-import com.airline.payment.application.InitiatePaymentCommand;
+import com.airline.payment.application.dto.InitiatePaymentCommand;
 import com.airline.payment.domain.Payment;
 import com.airline.payment.domain.PaymentMethod;
 import com.airline.shared.annoation.DomainService;

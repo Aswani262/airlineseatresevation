@@ -2,7 +2,8 @@ package com.airline.flightmgmt.domain;
 
 import com.airline.shared.model.BaseEntity;
 import lombok.*;
-
+import org.springframework.data.annotation.Id;
+import org.springframework.data.relational.core.mapping.Table;
 
 
 import java.util.UUID;
@@ -12,8 +13,11 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Table("routes")
+// Root cannot be aggregate because it cannot be share between flights
 public class Route extends BaseEntity {
 
+    @Id
     private UUID id;
 
     private String originAirport;

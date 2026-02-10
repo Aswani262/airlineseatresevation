@@ -2,6 +2,9 @@ package com.airline.payment.domain;
 
 import com.airline.shared.model.BaseEntity;
 import lombok.*;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
+import org.springframework.data.relational.core.mapping.Table;
 
 import java.math.BigDecimal;
 import java.time.OffsetDateTime;
@@ -13,8 +16,10 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Table("payments")
 public class Payment extends BaseEntity {
 
+    @Id
     private UUID id;
 
     private UUID bookingId;
@@ -33,5 +38,8 @@ public class Payment extends BaseEntity {
     private String redirectUrl;
     private String returnUrl;
     private String status;
+
+    @Version
+    private int version;
 
 }

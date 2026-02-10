@@ -2,6 +2,7 @@ package com.airline.flightmgmt.domain;
 
 import com.airline.shared.model.BaseEntity;
 import lombok.*;
+import org.springframework.data.relational.core.mapping.Table;
 
 import java.util.Map;
 import java.util.UUID;
@@ -11,6 +12,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Table("aircrafts")
 public class Aircraft extends BaseEntity {
 
 

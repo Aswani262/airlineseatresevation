@@ -3,7 +3,7 @@ spring:
     name: airline-seat-booking
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/airlinebooking
+    url: jdbc:postgresql://localhost:5432/airlinebooking?stringtype=unspecified
     username: postgres
     password: root
     driver-class-name: org.postgresql.Driver

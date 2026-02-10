@@ -2,16 +2,18 @@ package com.airline.booking.application.command;
 
 import com.airline.booking.application.command.dto.CancelBookingCommand;
 import com.airline.booking.application.command.dto.CancelBookingResult;
-import com.airline.booking.repository.BookingQueryRepository;
-import com.airline.booking.repository.BookingRepository;
-import com.airline.booking.repository.TicketRepository;
-import com.airline.booking.service.SeatInventoryService;
+import com.airline.booking.domain.model.Booking;
+import com.airline.booking.domain.model.BookingStatus;
+import com.airline.booking.domain.model.SeatInventory;
+import com.airline.booking.repository.IBookingCommandRepository;
+import com.airline.booking.repository.ISeatInventoryCommandRepository;
+import com.airline.booking.service.core.IBookingService;
+import com.airline.booking.service.core.ISeatInventoryService;
 import com.airline.shared.annoation.ApplicationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.time.Clock;
-import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.UUID;
 
@@ -19,59 +21,63 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class CancelBookingHandler implements CancelBookingUseCase {
 
-    private final BookingQueryRepository bookingQueryRepository;
-    private final BookingRepository bookingRepository;
-    private final SeatInventoryService seatInventoryService;
-    private final TicketRepository ticketRepository;
-
+    private final IBookingCommandRepository bookingRepository;
+    private final ISeatInventoryService seatInventoryService;
+    private final ISeatInventoryCommandRepository seatInventoryRepository;
+    private final IBookingService bookingService;
 
     @Override
     @Transactional
     public CancelBookingResult cancel(CancelBookingCommand command) {
 
         UUID bookingId = command.getBookingId();
-        var snap = bookingQueryRepository.getSnapshot(bookingId);
+        Booking booking = bookingRepository.findById(bookingId)
+                .orElseThrow(() -> new IllegalStateException("Booking not found: " + bookingId));
 
-        // Idempotency
-        if ("CANCELLED".equalsIgnoreCase(snap.status())) {
-            return new CancelBookingResult(snap.bookingId(), snap.bookingReference(), "CANCELLED");
+        BookingStatus currentStatus = booking.getStatus();
+
+        if (currentStatus == BookingStatus.CANCELLED) {
+            return new CancelBookingResult(booking.getId(), booking.getBookingReference(), "CANCELLED");
         }
 
-        if ("EXPIRED".equalsIgnoreCase(snap.status())) {
-            return new CancelBookingResult(snap.bookingId(), snap.bookingReference(), "EXPIRED");
+        if (currentStatus == BookingStatus.EXPIRED) {
+            return new CancelBookingResult(booking.getId(), booking.getBookingReference(), "EXPIRED");
         }
 
-        var now = OffsetDateTime.now(Clock.systemUTC());
-        List<String> seatNumbers = snap.seats().stream().map(s -> s.seatNumber()).toList();
+        // Prepare seats
+        List<String> seatNumbers = booking.getSeats().stream().map(s -> s.getSeatNumber()).toList();
+        List<String> normalized = seatInventoryService.normalizeSeats(seatNumbers);
+        List<SeatInventory> seats = seatInventoryRepository.findByFlightIdAndSeatNumberIn(booking.getFlightId(), normalized);
 
-        if ("DRAFT".equalsIgnoreCase(snap.status())) {
+        if (seats.size() != normalized.size()) {
+            throw new IllegalStateException("One or more seats not found");
+        }
+
+        if (currentStatus == BookingStatus.DRAFT) {
             // release only seats locked by THIS booking
-            seatInventoryService.releaseLockedSeatsOrThrow(snap.flightId(), bookingId, seatNumbers);
-
-            int updated = bookingRepository.updateStatus(bookingId, "DRAFT", "CANCELLED", now);
-            if (updated != 1) {
-                throw new IllegalStateException("Booking status changed concurrently; please retry");
-            }
-
-            return new CancelBookingResult(bookingId, snap.bookingReference(), "CANCELLED");
-        }
-
-        if ("CONFIRMED".equalsIgnoreCase(snap.status())) {
-            // Cancel tickets first (or after; within tx is fine)
-            ticketRepository.cancelTicketsByBooking(bookingId);
-
+            seatInventoryService.releaseLockedSeatsOrThrow(seats, bookingId);
+        } else if (currentStatus == BookingStatus.CONFIRMED) {
             // return seats to inventory (policy decision)
-            seatInventoryService.releaseBookedSeats(snap.flightId(), seatNumbers);
-
-            int updated = bookingRepository.updateStatus(bookingId, "CONFIRMED", "CANCELLED", now);
-            if (updated != 1) {
-                // If someone already cancelled concurrently, treat as idempotent on retry
-                throw new IllegalStateException("Booking status changed concurrently; please retry");
-            }
-
-            return new CancelBookingResult(bookingId, snap.bookingReference(), "CANCELLED");
+            seatInventoryService.releaseBookedSeats(seats);
+        } else {
+            throw new IllegalStateException("Booking cannot be cancelled in status: " + currentStatus);
         }
 
-        throw new IllegalStateException("Booking cannot be cancelled in status: " + snap.status());
+        // Persist updated seats if changes were made
+        try {
+            seatInventoryRepository.saveAll(seats);
+        } catch (OptimisticLockingFailureException e) {
+            throw new IllegalStateException("Seat release failed due to concurrent modification; please retry", e);
+        }
+
+        bookingService.cancel(booking); // Invoke domain service to handle status change and invariants (including tickets)
+
+        try {
+            bookingRepository.save(booking); // Persists changes to booking and children (tickets); optimistic locking via @Version
+        } catch (OptimisticLockingFailureException e) {
+            throw new IllegalStateException("Booking status changed concurrently; please retry", e);
+        }
+
+        return new CancelBookingResult(bookingId, booking.getBookingReference(), "CANCELLED");
     }
 }

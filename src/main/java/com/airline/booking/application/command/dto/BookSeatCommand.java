@@ -20,7 +20,6 @@ public class BookSeatCommand {
     private String currency; // INR/USD
 
     private List<Passenger> passengers;
-    private OffsetDateTime bookingDate;
     private List<SeatSelection> seatSelections;
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder

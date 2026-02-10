@@ -1,6 +1,6 @@
 package com.airline.payment.api;
 
-import com.airline.payment.application.InitiatePaymentCommand;
+import com.airline.payment.application.dto.InitiatePaymentCommand;
 import com.airline.payment.application.InitiatePaymentResult;
 import com.airline.payment.application.InitiatePaymentUseCase;
 import jakarta.validation.Valid;

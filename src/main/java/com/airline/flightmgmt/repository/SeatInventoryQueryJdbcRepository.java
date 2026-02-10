@@ -6,6 +6,7 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.sql.Types;
 import java.util.List;
 import java.util.UUID;
 
@@ -55,18 +56,18 @@ public class SeatInventoryQueryJdbcRepository implements SeatInventoryQueryRepos
     @Override
     public List<SeatResponse> getSeats(UUID flightId, String fareClass, String status) {
         String sql = """
-        SELECT id AS seat_id, seat_number, fare_class, status, price
-        FROM seat_inventory
-        WHERE flight_id = :flightId
-          AND (:fareClass::text IS NULL OR fare_class = :fareClass::text)
-          AND (:status::text   IS NULL OR status    = :status::text)
-        ORDER BY fare_class, seat_number
-    """;
+    SELECT id AS seat_id, seat_number, fare_class, status, price
+    FROM seat_inventory
+    WHERE flight_id = :flightId
+      AND (:fareClass IS NULL OR fare_class = :fareClass::fare_class_type)
+      AND (:status IS NULL OR status = :status::seat_status)
+    ORDER BY fare_class::fare_class_type, seat_number
+""";
 
         var params = new MapSqlParameterSource()
                 .addValue("flightId", flightId)
-                .addValue("fareClass", fareClass)
-                .addValue("status", status);
+                .addValue("fareClass", fareClass, Types.VARCHAR)
+                .addValue("status", status,Types.VARCHAR);
 
         return jdbcTemplate.query(sql, params, (rs, rowNum) -> SeatResponse.builder()
                 .seatId(rs.getObject("seat_id", UUID.class))

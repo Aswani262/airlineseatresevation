@@ -3,9 +3,13 @@ package com.airline.booking.domain.model;
 import com.airline.flightmgmt.domain.FareClass;
 import com.airline.shared.model.BaseEntity;
 import lombok.*;
+import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
+import org.springframework.data.relational.core.mapping.Table;
 
 
 import java.math.BigDecimal;
+import java.time.OffsetDateTime;
 import java.util.UUID;
 
 @Getter
@@ -13,8 +17,10 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
+@Table("seat_inventory")
 public class SeatInventory extends BaseEntity {
 
+    @Id
     private UUID id;
 
     private UUID flightId;
@@ -23,6 +29,12 @@ public class SeatInventory extends BaseEntity {
     private FareClass fareClass;
     private SeatStatus status;
 
+    private UUID lockedByBookingId;
+    private OffsetDateTime lockExpiresAt;
+
     private BigDecimal price;
+
+    @Version
+    private int version;
 
 }
