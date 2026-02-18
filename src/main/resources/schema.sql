@@ -138,7 +138,7 @@ CREATE TABLE bookings_seats (
     CONSTRAINT fk_booking_seats_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
     CONSTRAINT fk_booking_seats_passenger FOREIGN KEY (passenger_id) REFERENCES passengers(id) ON DELETE SET NULL,
     PRIMARY KEY (booking_id, seat_order),
-    UNIQUE (booking_id, seat_number)  -- Enforce unique seat numbers per booking
+    UNIQUE (booking_id, seat_number)
 );
 
 -- Tickets Table

@@ -32,7 +32,7 @@ public class InitiatePaymentHandler implements InitiatePaymentUseCase {
         Payment payment = paymentCoreService.createPendingPayment(command);
         paymentRepository.save(payment);
 
-        // DEMO ONLY: simulate gateway callback async (success/fail)
+        // DEMO ONLY - simulate gateway callback async (success/fail)
         demoGatewaySimulator.simulateGatewayCallback(payment.getId(), payment.getBookingId());
 
         return new InitiatePaymentResult(

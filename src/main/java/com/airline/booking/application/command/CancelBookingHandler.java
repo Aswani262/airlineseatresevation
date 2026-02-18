@@ -47,7 +47,6 @@ public class CancelBookingHandler implements CancelBookingUseCase {
             return new CancelBookingResult(booking.getId(), booking.getBookingReference(), "EXPIRED");
         }
 
-        // Prepare seats
         List<String> seatNumbers = booking.getSeats().stream().map(BookingSeat::getSeatNumber).toList();
         List<String> normalized = seatInventoryService.normalizeSeats(seatNumbers);
         List<SeatInventory> seats = seatInventoryRepository.findByFlightIdAndSeatNumberIn(booking.getFlightId(), normalized);
@@ -66,7 +65,6 @@ public class CancelBookingHandler implements CancelBookingUseCase {
             throw new IllegalStateException("Booking cannot be cancelled in status: " + currentStatus);
         }
 
-        // Persist updated seats if changes were made
         //TODO: Move this integration service or Fire event and handle by inventory service to release seats
         try {
             seatInventoryRepository.saveAll(seats);
@@ -74,7 +72,7 @@ public class CancelBookingHandler implements CancelBookingUseCase {
             throw new SeatLockingFailedException("Seat release failed due to concurrent modification; please retry");
         }
 
-        bookingService.cancel(booking); // Invoke domain service to handle status change and invariants (including tickets)
+        bookingService.cancel(booking);
 
         try {
             bookingRepository.save(booking);

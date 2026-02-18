@@ -30,7 +30,7 @@ public class ConfirmBookingHandler implements ConfirmBookingUseCase {
     private final IBookingCommandRepository bookingRepository;
     private final ISeatInventoryService seatInventoryService;
     private final ISeatInventoryCommandRepository seatInventoryRepository;
-    private final BookingCoreService bookingCoreService; // Added to inject the domain service
+    private final BookingCoreService bookingCoreService;
 
     @Override
     @Transactional
@@ -42,20 +42,18 @@ public class ConfirmBookingHandler implements ConfirmBookingUseCase {
 
         BookingStatus originalStatus = booking.getStatus();
 
-        bookingCoreService.confirm(booking); // Invoke domain service to handle status change and invariants (including ticket issuance)
+        bookingCoreService.confirm(booking);
 
         if (originalStatus == booking.getStatus()) {
-            // Already CONFIRMED (idempotent); return with existing tickets
+            // Already CONFIRMED idempotent  return with existing tickets
             List<ConfirmBookingResult.TicketIssued> responseTickets = booking.getTickets().stream()
                     .map(t -> new ConfirmBookingResult.TicketIssued(t.getPassengerId(), t.getTicketNumber()))
                     .collect(Collectors.toList());
             return new ConfirmBookingResult(booking.getId(), booking.getBookingReference(), "CONFIRMED", responseTickets);
         }
 
-        // Proceed with confirmation actions (was DRAFT, now CONFIRMED)
         OffsetDateTime now = OffsetDateTime.now(Clock.systemUTC());
 
-        // 1) Prepare seats
         List<String> seatNumbers = booking.getSeats().stream().map(s -> s.getSeatNumber()).toList();
         List<String> normalized = seatInventoryService.normalizeSeats(seatNumbers);
         List<SeatInventory> seats = seatInventoryRepository.findByFlightIdAndSeatNumberIn(booking.getFlightId(), normalized);
@@ -64,10 +62,8 @@ public class ConfirmBookingHandler implements ConfirmBookingUseCase {
             throw new SeatNotFound();
         }
 
-        // Confirm seats in DB: LOCKED -> BOOKED for seats locked by this booking and not expired
         seatInventoryService.confirmLockedSeatsOrThrow(seats, bookingId);
 
-        // Persist updated seats
 
         //TODO: Move to integration service and handle retries with backoff in case of optimistic locking failure (concurrent seat modifications)
         try {
@@ -77,7 +73,7 @@ public class ConfirmBookingHandler implements ConfirmBookingUseCase {
         }
 
         try {
-            bookingRepository.save(booking); // Persists changes to booking and children (tickets); optimistic locking via @Version
+            bookingRepository.save(booking);
         } catch (OptimisticLockingFailureException e) {
             throw new IllegalStateException("Booking status changed concurrently; please retry", e);
         }

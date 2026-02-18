@@ -32,18 +32,14 @@ public class BookingController {
     // (e.g. REST API, gRPC, Event Handler) and we want to reuse the same application service logic across them as
     // much as possible without duplicating code or
     // logic in each entry point (make a single entry point to the application layer).
-    /**
-     * 1) Book seats (single-leg) -> creates DRAFT booking + locks seats in DB (AVAILABLE -> LOCKED)
-     */
+
     @PostMapping("/confirm")
     @ResponseStatus(HttpStatus.CREATED)
     public BookSeatResult initiateBooking(@RequestBody InitiateBookingSeatCommand command) {
         return bookSeatUseCase.initiateBooking(command);
     }
 
-    /**
-     * 3) Cancel booking -> releases seats (LOCKED -> AVAILABLE for DRAFT, BOOKED -> AVAILABLE for CONFIRMED per policy)
-     */
+
     @PostMapping("/{bookingId}/cancel")
     @ResponseStatus(HttpStatus.OK)
     public CancelBookingResult cancelBooking(@PathVariable UUID bookingId,

@@ -14,7 +14,7 @@ public class DefaultEventPublisher implements EventPublisher{
     @Override
     public void publish(PaymentStatusEvent event) {
             // In a real implementation, this would publish to a message broker (e.g., Kafka, RabbitMQ)
-            // For this demo, we'll just print the event to the console
+            // For this demo we'll just print the event to the console
           applicationEventPublisher.publishEvent(event);
     }
 }

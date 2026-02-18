@@ -107,7 +107,7 @@ public class BookingCoreService implements IBookingService {
     public void cancel(Booking booking) {
         BookingStatus current = booking.getStatus();
         if (current == BookingStatus.CANCELLED || current == BookingStatus.EXPIRED) {
-            return; // Idempotent, no change
+            return; // Idempotent no change
         }
         if (current != BookingStatus.DRAFT && current != BookingStatus.CONFIRMED) {
             throw new IllegalStateException("Cannot cancel in status: " + current);
@@ -127,7 +127,7 @@ public class BookingCoreService implements IBookingService {
         OffsetDateTime now = OffsetDateTime.now(Clock.systemUTC());
         BookingStatus current = booking.getStatus();
         if (current == BookingStatus.CONFIRMED) {
-            return; // Idempotent, no change
+            return; // Idempotent no change
         }
         if (current != BookingStatus.DRAFT) {
             throw new IllegaBookingStatus("Cannot confirm booking in status: " + current);

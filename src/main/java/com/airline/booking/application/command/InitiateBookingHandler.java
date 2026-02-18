@@ -45,6 +45,7 @@ public class InitiateBookingHandler implements BookSeatUseCase {
         // For Business logic which requires strong consistency between booking and seat inventory,
         // doing it synchronously in the same transaction is simpler and ensures data integrity.
 
+
         // 2. Lock seats in inventory - this will set the hold expiration time on the seat inventory records
         SeatLockResult lockResult =  seatInventoryService.lockSeats(
                     command.getFlightId(),
@@ -53,15 +54,14 @@ public class InitiateBookingHandler implements BookSeatUseCase {
                     HOLD_MINUTES
         );
 
-
         // Set the hold expiration from the lock result
         booking.setHoldExpiresAt(lockResult.expiresAt());
 
         try {
-            // 3. Persist booking aggregate - this will save the booking in DRAFT status with the hold expiration time
-            // Booking aggregate will hold passenger info, seat details, pricing, and the hold expiration time.
             bookingRepository.save(booking);
         } catch (OptimisticLockingFailureException e) {
+            //release seats in inventory if booking persistence fails due to concurrent modification
+            //OR fire event booking failed
             throw new IllegalStateException("Booking creation failed due to concurrent modification; please retry", e);
         }
 

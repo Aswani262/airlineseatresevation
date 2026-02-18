@@ -20,9 +20,7 @@ public class PaymentStatusEventHandler {
         this.cancelBookingUseCase = cancelBookingUseCase;
     }
 
-    /**
-     * 2) Seat assignment + confirmation -> converts LOCKED -> BOOKED + booking DRAFT -> CONFIRMED + issues tickets
-     */
+
     @EventListener
     public void on(PaymentStatusEvent event) {
 

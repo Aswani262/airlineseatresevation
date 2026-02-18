@@ -33,8 +33,6 @@ public class FlightQueryJdbcRepository implements FlightQueryRepository {
             ORDER BY f.departure_time
         """;
 
-        // If your DB stores timestamptz in UTC (recommended), this is good.
-        // If you store times in a specific local timezone, adjust ZoneOffset accordingly.
         OffsetDateTime fromTs = date.atStartOfDay().atOffset(ZoneOffset.UTC);
         OffsetDateTime toTs = date.plusDays(1).atStartOfDay().atOffset(ZoneOffset.UTC);
 

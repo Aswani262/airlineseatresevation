@@ -74,7 +74,6 @@ public class SeatInventoryCoreService implements ISeatInventoryService {
 
     @Override
     public void releaseLockedSeatsOrThrow(List<SeatInventory> seats, UUID bookingId) {
-        // Assume seats are already loaded by caller
         if (seats.isEmpty()) {
             throw new IllegalArgumentException("seats is required");
         }
@@ -96,10 +95,6 @@ public class SeatInventoryCoreService implements ISeatInventoryService {
 
     @Override
     public void releaseBookedSeats(List<SeatInventory> seats) {
-        // For confirmed booking cancellation
-        // Assume seats are already loaded by caller
-
-        // Idempotent: only release if BOOKED
         for (SeatInventory seat : seats) {
             if (seat.getStatus() == SeatStatus.BOOKED) {
                 seat.setStatus(SeatStatus.AVAILABLE);
@@ -116,6 +111,5 @@ public class SeatInventoryCoreService implements ISeatInventoryService {
                 .map(s -> s.trim().toUpperCase(Locale.ROOT))
                 .collect(Collectors.toList());
     }
-
 
 }
