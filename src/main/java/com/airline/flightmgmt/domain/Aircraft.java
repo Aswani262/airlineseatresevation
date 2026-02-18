@@ -14,8 +14,6 @@ import java.util.UUID;
 @Builder
 @Table("aircrafts")
 public class Aircraft extends BaseEntity {
-
-
     private UUID id;
 
     private String registrationNumber;

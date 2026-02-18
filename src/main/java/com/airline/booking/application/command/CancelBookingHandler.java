@@ -3,13 +3,16 @@ package com.airline.booking.application.command;
 import com.airline.booking.application.command.dto.CancelBookingCommand;
 import com.airline.booking.application.command.dto.CancelBookingResult;
 import com.airline.booking.domain.model.Booking;
+import com.airline.booking.domain.model.BookingSeat;
 import com.airline.booking.domain.model.BookingStatus;
-import com.airline.booking.domain.model.SeatInventory;
+import com.airline.booking.exception.BookingFailed;
+import com.airline.flightmgmt.domain.SeatInventory;
 import com.airline.booking.repository.IBookingCommandRepository;
-import com.airline.booking.repository.ISeatInventoryCommandRepository;
+import com.airline.flightmgmt.exception.SeatLockingFailedException;
+import com.airline.flightmgmt.repository.ISeatInventoryCommandRepository;
 import com.airline.booking.service.core.IBookingService;
-import com.airline.booking.service.core.ISeatInventoryService;
-import com.airline.shared.annoation.ApplicationService;
+import com.airline.flightmgmt.service.ISeatInventoryService;
+import com.airline.shared.annotation.ApplicationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.transaction.annotation.Transactional;
@@ -45,7 +48,7 @@ public class CancelBookingHandler implements CancelBookingUseCase {
         }
 
         // Prepare seats
-        List<String> seatNumbers = booking.getSeats().stream().map(s -> s.getSeatNumber()).toList();
+        List<String> seatNumbers = booking.getSeats().stream().map(BookingSeat::getSeatNumber).toList();
         List<String> normalized = seatInventoryService.normalizeSeats(seatNumbers);
         List<SeatInventory> seats = seatInventoryRepository.findByFlightIdAndSeatNumberIn(booking.getFlightId(), normalized);
 
@@ -64,19 +67,22 @@ public class CancelBookingHandler implements CancelBookingUseCase {
         }
 
         // Persist updated seats if changes were made
+        //TODO: Move this integration service or Fire event and handle by inventory service to release seats
         try {
             seatInventoryRepository.saveAll(seats);
         } catch (OptimisticLockingFailureException e) {
-            throw new IllegalStateException("Seat release failed due to concurrent modification; please retry", e);
+            throw new SeatLockingFailedException("Seat release failed due to concurrent modification; please retry");
         }
 
         bookingService.cancel(booking); // Invoke domain service to handle status change and invariants (including tickets)
 
         try {
-            bookingRepository.save(booking); // Persists changes to booking and children (tickets); optimistic locking via @Version
+            bookingRepository.save(booking);
         } catch (OptimisticLockingFailureException e) {
-            throw new IllegalStateException("Booking status changed concurrently; please retry", e);
+            throw new BookingFailed("Booking cancellation failed due to concurrent modification; please retry");
         }
+
+        //TODO:Fire BookingCancelledEvent  , and start refund process (if payment is completed) asynchronously in event handler
 
         return new CancelBookingResult(bookingId, booking.getBookingReference(), "CANCELLED");
     }

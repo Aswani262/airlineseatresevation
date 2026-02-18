@@ -1,6 +1,6 @@
 package com.airline.searchengine.eventhandler;
 
-import com.airline.shared.annoation.EventService;
+import com.airline.shared.annotation.EventService;
 import com.airline.shared.events.FlightInformationUpdated;
 import org.springframework.context.event.EventListener;
 

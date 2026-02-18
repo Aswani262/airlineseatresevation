@@ -9,8 +9,8 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 @RestControllerAdvice
 public class ApiExceptionHandler {
 
-    @ExceptionHandler(StructuralValidationException.class)
-    public ResponseEntity<ApiErrorResponse> handleStructural(StructuralValidationException ex) {
+    @ExceptionHandler(StructuralException.class)
+    public ResponseEntity<ApiErrorResponse> handleStructural(StructuralException ex) {
         return ResponseEntity.status(ex.getHttpStatus()).body(
                 ApiErrorResponse.of(
                         ex.getCode(),
@@ -20,30 +20,8 @@ public class ApiExceptionHandler {
         );
     }
 
-    @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<ApiErrorResponse> illegalArgumentException(IllegalArgumentException ex) {
-        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
-                ApiErrorResponse.of(
-                        null,
-                        ex.getMessage(),
-                        null
-                )
-        );
-    }
-
-    @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<ApiErrorResponse> illegalStateException(IllegalStateException ex) {
-        return ResponseEntity.status(HttpStatus.CONFLICT).body(
-                ApiErrorResponse.of(
-                        null,
-                        ex.getMessage(),
-                        null
-                )
-        );
-    }
-
-    @ExceptionHandler(BusinessValidationException.class)
-    public ResponseEntity<ApiErrorResponse> handleBusiness(BusinessValidationException ex) {
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ApiErrorResponse> handleBusiness(BusinessException ex) {
         return ResponseEntity.status(ex.getHttpStatus()).body(
                 ApiErrorResponse.of(
                         ex.getCode(),
@@ -53,7 +31,28 @@ public class ApiExceptionHandler {
         );
     }
 
-    // Optional fallback:
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<ApiErrorResponse> handleBusiness(IllegalStateException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT).body(
+                ApiErrorResponse.of(
+                        null,
+                        ex.getMessage(),
+                        null
+                )
+        );
+    }
+
+    @ExceptionHandler(IllegalArgumentException.class)
+    public ResponseEntity<ApiErrorResponse> handleBusiness(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                ApiErrorResponse.of(
+                        null,
+                        ex.getMessage(),
+                        null
+                )
+        );
+    }
+
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ApiErrorResponse> handleUnexpected(Exception ex) {
         return ResponseEntity.internalServerError().body(

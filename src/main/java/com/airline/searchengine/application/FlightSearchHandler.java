@@ -3,7 +3,7 @@ package com.airline.searchengine.application;
 import com.airline.searchengine.domain.FlightSearchDoc;
 import com.airline.searchengine.integration.FlightServiceIntegrationServcie;
 import com.airline.searchengine.repository.FlightSearchRepository;
-import com.airline.shared.annoation.ApplicationService;
+import com.airline.shared.annotation.ApplicationService;
 import lombok.RequiredArgsConstructor;
 
 @ApplicationService

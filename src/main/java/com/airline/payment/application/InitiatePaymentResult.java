@@ -6,10 +6,5 @@ import java.util.UUID;
 
 public record InitiatePaymentResult(
         UUID paymentId,
-        UUID bookingId,
-        String status,                 // PENDING
-        String gateway,                // DEMO_GATEWAY
-        String redirectUrl,            // user redirect here
-        Map<String, String> gatewayParams,
-        OffsetDateTime createdAt
+        UUID bookingId
 ) {}

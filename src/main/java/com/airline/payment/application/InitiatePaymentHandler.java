@@ -5,7 +5,7 @@ import com.airline.payment.domain.Payment;
 import com.airline.payment.repository.IPaymentCommandRepository;
 import com.airline.payment.service.DemoGatewaySimulator;
 import com.airline.payment.service.PaymentCoreService;
-import com.airline.shared.annoation.ApplicationService;
+import com.airline.shared.annotation.ApplicationService;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Map;
@@ -37,17 +37,7 @@ public class InitiatePaymentHandler implements InitiatePaymentUseCase {
 
         return new InitiatePaymentResult(
                 payment.getId(),
-                payment.getBookingId(),
-                payment.getStatus(),
-                "DEMO_GATEWAY",
-                payment.getRedirectUrl(),
-                Map.of(
-                        "paymentId", payment.getId().toString(),
-                        "amount", payment.getAmount().toPlainString(),
-                        "currency", payment.getCurrency(),
-                        "returnUrl", payment.getReturnUrl()
-                ),
-                payment.getCreatedAt()
+                payment.getBookingId()
         );
     }
 }

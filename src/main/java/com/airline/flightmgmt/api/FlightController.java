@@ -30,6 +30,7 @@ public class FlightController {
         this.getFareClassUseCase = getFareClassUseCase;
     }
 
+
     @GetMapping("/search")
     public List<FlightSearchResponse> search(
             @RequestParam @NotBlank String origin,

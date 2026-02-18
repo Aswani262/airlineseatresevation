@@ -7,9 +7,8 @@ import com.airline.flightmgmt.api.dto.SeatResponse;
 import com.airline.flightmgmt.repository.FareClassRepository;
 import com.airline.flightmgmt.repository.FlightQueryRepository;
 import com.airline.flightmgmt.repository.SeatInventoryQueryRepository;
-import com.airline.shared.annoation.ApplicationService;
+import com.airline.shared.annotation.ApplicationService;
 import lombok.RequiredArgsConstructor;
-import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 import java.util.List;

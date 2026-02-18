@@ -3,7 +3,8 @@ package com.airline.payment.service;
 import com.airline.payment.application.dto.InitiatePaymentCommand;
 import com.airline.payment.domain.Payment;
 import com.airline.payment.domain.PaymentMethod;
-import com.airline.shared.annoation.DomainService;
+import com.airline.payment.domain.PaymentStatus;
+import com.airline.shared.annotation.CoreService;
 import lombok.RequiredArgsConstructor;
 
 import java.math.BigDecimal;
@@ -12,7 +13,7 @@ import java.time.OffsetDateTime;
 import java.util.Locale;
 import java.util.UUID;
 
-@DomainService
+@CoreService
 @RequiredArgsConstructor
 public class PaymentCoreService implements IPaymentCoreService {
 
@@ -38,7 +39,7 @@ public class PaymentCoreService implements IPaymentCoreService {
                 .amount(cmd.getAmount())
                 .currency(currency)
                 .paymentMethod(PaymentMethod.valueOf(method))
-                .status("PENDING")
+                .status(PaymentStatus.INITIATED)
                 .redirectUrl(redirectUrl)
                 .returnUrl(cmd.getReturnUrl())
                 .build();

@@ -4,12 +4,15 @@ import com.airline.booking.api.dto.ConfirmBookingResult;
 import com.airline.booking.application.command.dto.ConfirmBookingCommand;
 import com.airline.booking.domain.model.Booking;
 import com.airline.booking.domain.model.BookingStatus;
-import com.airline.booking.domain.model.SeatInventory;
+import com.airline.booking.exception.BookingHoldExpiredException;
+import com.airline.booking.exception.BookingNotFound;
+import com.airline.booking.exception.SeatNotFound;
+import com.airline.flightmgmt.domain.SeatInventory;
 import com.airline.booking.repository.IBookingCommandRepository;
-import com.airline.booking.repository.ISeatInventoryCommandRepository;
+import com.airline.flightmgmt.repository.ISeatInventoryCommandRepository;
 import com.airline.booking.service.core.BookingCoreService;
-import com.airline.booking.service.core.ISeatInventoryService;
-import com.airline.shared.annoation.ApplicationService;
+import com.airline.flightmgmt.service.ISeatInventoryService;
+import com.airline.shared.annotation.ApplicationService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,7 +38,7 @@ public class ConfirmBookingHandler implements ConfirmBookingUseCase {
 
         UUID bookingId = command.getBookingId();
         Booking booking = bookingRepository.findById(bookingId)
-                .orElseThrow(() -> new IllegalStateException("Booking not found: " + bookingId));
+                .orElseThrow(() -> new BookingNotFound( bookingId.toString()));
 
         BookingStatus originalStatus = booking.getStatus();
 
@@ -58,13 +61,15 @@ public class ConfirmBookingHandler implements ConfirmBookingUseCase {
         List<SeatInventory> seats = seatInventoryRepository.findByFlightIdAndSeatNumberIn(booking.getFlightId(), normalized);
 
         if (seats.size() != normalized.size()) {
-            throw new IllegalStateException("One or more seats not found");
+            throw new SeatNotFound();
         }
 
         // Confirm seats in DB: LOCKED -> BOOKED for seats locked by this booking and not expired
         seatInventoryService.confirmLockedSeatsOrThrow(seats, bookingId);
 
         // Persist updated seats
+
+        //TODO: Move to integration service and handle retries with backoff in case of optimistic locking failure (concurrent seat modifications)
         try {
             seatInventoryRepository.saveAll(seats);
         } catch (OptimisticLockingFailureException e) {

@@ -1,6 +1,6 @@
 package com.airline.shared.service;
 
-import com.airline.shared.annoation.EventService;
+import com.airline.shared.annotation.EventService;
 import com.airline.shared.events.PaymentStatusEvent;
 import lombok.RequiredArgsConstructor;
 import org.springframework.context.ApplicationEventPublisher;

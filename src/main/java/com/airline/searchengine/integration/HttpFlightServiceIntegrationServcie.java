@@ -3,7 +3,7 @@ package com.airline.searchengine.integration;
 import com.airline.flightmgmt.domain.Aircraft;
 import com.airline.flightmgmt.domain.Flight;
 import com.airline.flightmgmt.domain.Route;
-import com.airline.shared.annoation.IntegrationService;
+import com.airline.shared.annotation.IntegrationService;
 
 import java.util.UUID;
 

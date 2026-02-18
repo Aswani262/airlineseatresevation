@@ -17,6 +17,5 @@ public class PaymentWebhookController {
     @PostMapping("/webhook")
     public void webhook(PaymentGatewayWebhookEvent event) {
         simulator.simulateGatewayCallback(event.getPaymentId(), event.getBookingId());
-        // Later: validate signature + parse gateway payload + update DB + publish PaymentStatusEvent
     }
 }

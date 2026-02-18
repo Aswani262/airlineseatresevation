@@ -28,7 +28,7 @@ public class Payment extends BaseEntity {
     private String currency;          // ISO-4217 (USD, INR, EUR)
 
     private PaymentMethod paymentMethod;
-    private PaymentStatus paymentStatus;
+    private PaymentStatus status;
 
     private String transactionId;// gateway txn id
 
@@ -37,7 +37,6 @@ public class Payment extends BaseEntity {
 
     private String redirectUrl;
     private String returnUrl;
-    private String status;
 
     @Version
     private int version;

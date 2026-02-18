@@ -1,6 +1,7 @@
 package com.airline.payment.service;
 
 import com.airline.payment.domain.Payment;
+import com.airline.payment.domain.PaymentStatus;
 import com.airline.payment.repository.IPaymentCommandRepository;
 import com.airline.shared.events.PaymentStatusEvent;
 import com.airline.shared.service.EventPublisher;
@@ -29,20 +30,20 @@ public class DemoGatewaySimulator {
         boolean ok = random.nextInt(10) < 8;
 
         String txnId = ok ? ("TXN-DEMO-" + UUID.randomUUID()) : null;
-        String newStatus = ok ? "SUCCESS" : "FAILED";
+        String newStatus = ok ? "SUCCESSFUL" : "FAILED";
         String failureReason = ok ? null : "Gateway failure";
 
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new RuntimeException("Payment not found: " + paymentId));
 
         // Idempotency: If already in a final state (SUCCESS or FAILED), skip update and event publishing
-        if ("SUCCESS".equals(payment.getStatus()) || "FAILED".equals(payment.getStatus())) {
+        if ("SUCCESSFUL".equals(payment.getStatus().name()) || "FAILED".equals(payment.getStatus().name())) {
             // Optionally log: "Callback already processed for payment " + paymentId
             return;
         }
 
         // Update payment details
-        payment.setStatus(newStatus);
+        payment.setStatus(PaymentStatus.valueOf(newStatus));
         if (ok) {
             payment.setTransactionId(txnId);
         }
@@ -55,7 +56,7 @@ public class DemoGatewaySimulator {
 
         // Publish event only if update succeeded
         PaymentStatusEvent event = ok
-                ? new PaymentStatusEvent(bookingId, PaymentStatusEvent.Status.SUCCESS, null)
+                ? new PaymentStatusEvent(bookingId, PaymentStatusEvent.Status.SUCCESSFUL, null)
                 : new PaymentStatusEvent(bookingId, PaymentStatusEvent.Status.FAILED, failureReason);
 
         eventPublisher.publish(event);

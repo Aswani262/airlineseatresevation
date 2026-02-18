@@ -36,7 +36,6 @@ public class Booking extends BaseEntity {
 
     private OffsetDateTime bookingDate;
 
-    //This will become the aggregate when we are sharing the passenger with different booking entities, but for simplicity we will keep it here for now.
     @Builder.Default
     @MappedCollection(idColumn = "booking_id",keyColumn = "passenger_order")
     private List<Passenger> passengers = new ArrayList<>();

@@ -2,7 +2,8 @@ package com.airline.payment.domain;
 
 public enum PaymentStatus {
     INITIATED,
-    SUCCESS,
+    SUCCESSFUL,
     FAILED,
-    REFUNDED
+    REFUNDED,
+    CANCELLED
 }

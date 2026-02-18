@@ -1,10 +1,10 @@
 package com.airline.booking.service.core;
 
-import com.airline.shared.annoation.DomainService;
+import com.airline.shared.annotation.CoreService;
 
 import java.security.SecureRandom;
 
-@DomainService
+@CoreService
 public class TicketingCoreService implements ITicketingService {
 
     private static final SecureRandom RND = new SecureRandom();

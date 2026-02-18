@@ -4,7 +4,7 @@ import com.airline.booking.application.command.CancelBookingUseCase;
 import com.airline.booking.application.command.ConfirmBookingUseCase;
 import com.airline.booking.application.command.dto.CancelBookingCommand;
 import com.airline.booking.application.command.dto.ConfirmBookingCommand;
-import com.airline.shared.annoation.EventService;
+import com.airline.shared.annotation.EventService;
 import com.airline.shared.events.PaymentStatusEvent;
 import org.springframework.context.event.EventListener;
 
@@ -27,7 +27,7 @@ public class PaymentStatusEventHandler {
     public void on(PaymentStatusEvent event) {
 
         switch (event.getStatus()) {
-            case SUCCESS -> confirmBookingUseCase.bookingFinalize(
+            case SUCCESSFUL -> confirmBookingUseCase.bookingFinalize(
                     ConfirmBookingCommand.builder()
                             .bookingId(event.getBookingId())
                             .build()

@@ -11,7 +11,17 @@ CREATE TYPE fare_class_type AS ENUM ('ECONOMY', 'BUSINESS', 'FIRST');
 -- Assumed enum for TicketStatus (common values for tickets)
 CREATE TYPE ticket_status AS ENUM ('ISSUED', 'CANCELLED', 'PENDING');
 
+CREATE TYPE flight_status AS ENUM ('SCHEDULED', 'DELAYED', 'CANCELLED', 'DEPARTED', 'ARRIVED');
+
+-- Enum for PaymentMethod (assumed common values since not provided)
+CREATE TYPE payment_method AS ENUM ('CREDIT_CARD', 'DEBIT_CARD', 'UPI', 'NET_BANKING', 'WALLET', 'PAYPAL');
+
+-- Enum for PaymentStatus (assumed common values since not provided)
+CREATE TYPE payment_status AS ENUM ('INITIATED', 'PENDING', 'SUCCESSFUL', 'FAILED', 'REFUNDED', 'CANCELLED');
+
 -- Tables
+
+-- Flight Management Bounded Context
 CREATE TABLE fare_classes (
     id UUID PRIMARY KEY,
     code VARCHAR(50) NOT NULL,
@@ -24,15 +34,14 @@ CREATE TABLE fare_classes (
     change_fee_percentage NUMERIC(5, 2),
     priority_boarding BOOLEAN,
     meal_service BOOLEAN,
-    seat_selection_free BOOLEAN,
     created_at TIMESTAMP WITH TIME ZONE,
     updated_at TIMESTAMP WITH TIME ZONE,
-    version INTEGER
+    version BIGINT NOT NULL DEFAULT 0
 );
 
 CREATE TABLE seat_inventory (
     id UUID PRIMARY KEY,
-    flight_id UUID NOT NULL,
+    flight_id UUID NOT NULL REFERENCES flights(id) ON DELETE CASCADE,
     seat_number VARCHAR(10) NOT NULL,
     fare_class fare_class_type NOT NULL,
     status seat_status NOT NULL,
@@ -41,14 +50,53 @@ CREATE TABLE seat_inventory (
     price NUMERIC(10, 2) NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE,
     updated_at TIMESTAMP WITH TIME ZONE,
-    version INTEGER
+    version BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE aircrafts (
+    id UUID PRIMARY KEY,
+    registration_number VARCHAR(255) NOT NULL,
+    model VARCHAR(255) NOT NULL,
+    manufacturer VARCHAR(255) NOT NULL,
+    total_seats INTEGER NOT NULL,
+    seat_configuration JSONB NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+CREATE TABLE flights (
+    id UUID PRIMARY KEY,
+    flight_number VARCHAR(255) NOT NULL,
+    aircraft_id UUID NOT NULL REFERENCES aircrafts(id),
+    route_id UUID NOT NULL REFERENCES routes(id),
+    departure_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    arrival_time TIMESTAMP WITH TIME ZONE NOT NULL,
+    status flight_status NOT NULL,
+    total_seats INTEGER NOT NULL,
+    available_seats INTEGER NOT NULL,
+    seat_configuration JSONB NOT NULL,
+    base_price NUMERIC(10, 2) NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE
 );
 
 
+CREATE TABLE routes (
+    id UUID PRIMARY KEY,
+    origin_airport VARCHAR(255) NOT NULL,
+    destination_airport VARCHAR(255) NOT NULL,
+    distance_km INTEGER NOT NULL,
+    estimated_duration_minutes INTEGER NOT NULL,
+    is_international BOOLEAN NOT NULL,
+    created_at TIMESTAMP WITH TIME ZONE,
+    updated_at TIMESTAMP WITH TIME ZONE
+);
+
+-- Booking Management Bounded Context
 CREATE TABLE bookings (
     id UUID PRIMARY KEY,
     booking_reference VARCHAR(20) NOT NULL,
-    flight_id UUID NOT NULL,
+    flight_id UUID NOT NULL ,
     customer_id UUID NOT NULL,
     total_amount NUMERIC(10, 2) NOT NULL,
     currency VARCHAR(3) NOT NULL,
@@ -60,7 +108,7 @@ CREATE TABLE bookings (
     version BIGINT NOT NULL DEFAULT 0
 );
 
--- Passengers Table (Referenced Entity with @Id)
+-- Passengers Table
 CREATE TABLE passengers (
     id UUID PRIMARY KEY,
     booking_id UUID NOT NULL,
@@ -69,7 +117,6 @@ CREATE TABLE passengers (
     last_name VARCHAR(255) NOT NULL,
     email VARCHAR(255),
     phone VARCHAR(50),
-    passport_number VARCHAR(50),
     date_of_birth DATE,
     passenger_type passenger_type_type NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE,
@@ -78,7 +125,7 @@ CREATE TABLE passengers (
     UNIQUE (booking_id, passenger_order)
 );
 
--- Booking Seats Table (Embeddable Value Object, no @Id)
+-- Booking Seats Table
 CREATE TABLE bookings_seats (
     booking_id UUID NOT NULL,
     seat_order INTEGER NOT NULL,
@@ -94,7 +141,7 @@ CREATE TABLE bookings_seats (
     UNIQUE (booking_id, seat_number)  -- Enforce unique seat numbers per booking
 );
 
--- Tickets Table (Embeddable Value Object, no @Id)
+-- Tickets Table
 CREATE TABLE tickets (
     booking_id UUID NOT NULL,
     ticket_order INTEGER NOT NULL,
@@ -110,63 +157,22 @@ CREATE TABLE tickets (
     UNIQUE (ticket_number)  -- Assuming ticket numbers are globally unique
 );
 
+
 -- Enum for FlightStatus
-CREATE TYPE flight_status AS ENUM ('SCHEDULED', 'DELAYED', 'CANCELLED', 'DEPARTED', 'ARRIVED');
 
-CREATE TABLE routes (
-    id UUID PRIMARY KEY,
-    origin_airport VARCHAR(255) NOT NULL,
-    destination_airport VARCHAR(255) NOT NULL,
-    distance_km INTEGER NOT NULL,
-    estimated_duration_minutes INTEGER NOT NULL,
-    is_international BOOLEAN NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE
-);
 
-CREATE TABLE aircrafts (
-    id UUID PRIMARY KEY,
-    registration_number VARCHAR(255) NOT NULL,
-    model VARCHAR(255) NOT NULL,
-    manufacturer VARCHAR(255) NOT NULL,
-    total_seats INTEGER NOT NULL,
-    configuration JSONB NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE
-);
-
-CREATE TABLE flights (
-    id UUID PRIMARY KEY,
-    flight_number VARCHAR(255) NOT NULL,
-    aircraft_id UUID NOT NULL REFERENCES aircrafts(id),
-    route_id UUID NOT NULL REFERENCES routes(id),
-    departure_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    arrival_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    status flight_status NOT NULL,
-    base_price NUMERIC(10, 2) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE
-);
-
--- Enum for PaymentMethod (assumed common values since not provided)
-CREATE TYPE payment_method AS ENUM ('CREDIT_CARD', 'DEBIT_CARD', 'UPI', 'NET_BANKING', 'WALLET', 'PAYPAL');
-
--- Enum for PaymentStatus (assumed common values since not provided)
-CREATE TYPE payment_status AS ENUM ('INITIATED', 'PENDING', 'SUCCESSFUL', 'FAILED', 'REFUNDED', 'CANCELLED');
-
--- Table for payments
+-- Payments Management Bounded Context
 CREATE TABLE payments (
     id UUID PRIMARY KEY,
-    booking_id UUID NOT NULL,  -- Assuming REFERENCES bookings(id), but table not defined yet
+    booking_id UUID NOT NULL,
     amount NUMERIC(10, 2) NOT NULL,
     currency VARCHAR(3) NOT NULL,
     payment_method payment_method NOT NULL,
-    payment_status payment_status NOT NULL,
+    status payment_status NOT NULL,
     transaction_id VARCHAR(255),
     gateway_response JSONB,
     redirect_url VARCHAR(512),
     return_url VARCHAR(512),
-    status VARCHAR(255),
     version INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE,
     updated_at TIMESTAMP WITH TIME ZONE
@@ -181,20 +187,26 @@ CREATE INDEX idx_fare_classes_code ON fare_classes(code);
 CREATE INDEX idx_seat_inventory_flight_id ON seat_inventory(flight_id);
 CREATE INDEX idx_seat_inventory_available ON seat_inventory(flight_id, fare_class, status);
 CREATE INDEX idx_seat_inventory_locked_by ON seat_inventory(locked_by_booking_id);
+
+-- For schedule-based cleanup of expired locks, an index on lock_expires_at can help
 CREATE INDEX idx_seat_inventory_lock_expires_at ON seat_inventory(lock_expires_at);
 
 -- Indexes for bookings
 CREATE INDEX idx_bookings_booking_reference ON bookings(booking_reference);
+
 CREATE INDEX idx_bookings_flight_id ON bookings(flight_id);
+
 CREATE INDEX idx_bookings_customer_id ON bookings(customer_id);
+
 CREATE INDEX idx_bookings_status ON bookings(status);
+
 CREATE INDEX idx_bookings_hold_expires_at ON bookings(hold_expires_at);
+
 CREATE INDEX idx_bookings_booking_date ON bookings(booking_date);
 
 -- Indexes for passengers
 CREATE INDEX idx_passengers_booking_id ON passengers(booking_id);
 CREATE INDEX idx_passengers_email ON passengers(email);
-CREATE INDEX idx_passengers_passport_number ON passengers(passport_number);
 
 -- Indexes for booking_seats
 CREATE INDEX idx_booking_seats_booking_id ON booking_seats(booking_id);

@@ -56,18 +56,29 @@ public class SeatInventoryQueryJdbcRepository implements SeatInventoryQueryRepos
     @Override
     public List<SeatResponse> getSeats(UUID flightId, String fareClass, String status) {
         String sql = """
-    SELECT id AS seat_id, seat_number, fare_class, status, price
-    FROM seat_inventory
-    WHERE flight_id = :flightId
-      AND (:fareClass IS NULL OR fare_class = :fareClass::fare_class_type)
-      AND (:status IS NULL OR status = :status::seat_status)
-    ORDER BY fare_class::fare_class_type, seat_number
-""";
+        SELECT
+          id AS seat_id,
+          seat_number,
+          fare_class,
+          status,
+          price
+        FROM seat_inventory
+        WHERE flight_id = :flightId
+          AND (
+            NULLIF(:fareClass, '') IS NULL
+            OR fare_class = CAST(NULLIF(:fareClass, '') AS fare_class_type)
+          )
+          AND (
+            NULLIF(:status, '') IS NULL
+            OR status = CAST(NULLIF(:status, '') AS seat_status)
+          )
+        ORDER BY fare_class, seat_number
+        """;
 
         var params = new MapSqlParameterSource()
                 .addValue("flightId", flightId)
                 .addValue("fareClass", fareClass, Types.VARCHAR)
-                .addValue("status", status,Types.VARCHAR);
+                .addValue("status", status, Types.VARCHAR);
 
         return jdbcTemplate.query(sql, params, (rs, rowNum) -> SeatResponse.builder()
                 .seatId(rs.getObject("seat_id", UUID.class))
@@ -77,5 +88,6 @@ public class SeatInventoryQueryJdbcRepository implements SeatInventoryQueryRepos
                 .price(rs.getBigDecimal("price"))
                 .build());
     }
+
 
 }
