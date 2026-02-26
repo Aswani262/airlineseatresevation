@@ -4,10 +4,14 @@ import com.airline.flightmgmt.api.dto.FareClassResponse;
 import com.airline.flightmgmt.api.dto.FlightSearchResponse;
 import com.airline.flightmgmt.api.dto.SeatAvailabilitySummaryResponse;
 import com.airline.flightmgmt.api.dto.SeatResponse;
+import com.airline.flightmgmt.application.command.dto.HoldSeatCommand;
+import com.airline.flightmgmt.application.command.HoldSeatUseCase;
 import com.airline.flightmgmt.application.query.GetFareClassUseCase;
 import com.airline.flightmgmt.application.query.GetSeatAvailabilityUseCase;
 import com.airline.flightmgmt.application.query.SearchFlightsUseCase;
+import com.airline.shared.model.SeatLockResult;
 import jakarta.validation.constraints.NotBlank;
+import lombok.RequiredArgsConstructor;
 import org.springframework.format.annotation.DateTimeFormat;
 import org.springframework.web.bind.annotation.*;
 
@@ -17,18 +21,13 @@ import java.util.UUID;
 
 @RestController
 @RequestMapping("api/v1/flights")
+@RequiredArgsConstructor
 public class FlightController {
 
     private final SearchFlightsUseCase searchFlightsUseCase;
     private final GetSeatAvailabilityUseCase getSeatAvailabilityUseCase;
     private final GetFareClassUseCase getFareClassUseCase;
-
-    public FlightController(SearchFlightsUseCase searchFlightsUseCase,
-                            GetSeatAvailabilityUseCase getSeatAvailabilityUseCase, GetFareClassUseCase getFareClassUseCase) {
-        this.searchFlightsUseCase = searchFlightsUseCase;
-        this.getSeatAvailabilityUseCase = getSeatAvailabilityUseCase;
-        this.getFareClassUseCase = getFareClassUseCase;
-    }
+    private final HoldSeatUseCase holdSeatUseCase;
 
 
     @GetMapping("/search")
@@ -57,5 +56,10 @@ public class FlightController {
     @GetMapping("/fare-class/{code}")
     public FareClassResponse getByCode(@PathVariable String code) {
         return getFareClassUseCase.getByCode(code);
+    }
+
+    @PostMapping("/hold-seat")
+    public SeatLockResult holdSeat(@RequestBody HoldSeatCommand lockSeatCommand) {
+        return holdSeatUseCase.holdSeat(lockSeatCommand);
     }
 }

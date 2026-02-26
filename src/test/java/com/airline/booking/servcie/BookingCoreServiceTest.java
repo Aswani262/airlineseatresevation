@@ -6,7 +6,6 @@ import com.airline.booking.exception.BookingHoldExpiredException;
 import com.airline.booking.exception.IllegaBookingStatus;
 import com.airline.booking.service.core.BookingCoreService;
 import com.airline.booking.service.core.TicketingCoreService;
-import com.airline.flightmgmt.domain.FareClass;
 import com.airline.shared.exception.ErrorNotification;
 import com.airline.shared.exception.StructuralException;
 import com.airline.shared.exception.ValidationError;
@@ -40,7 +39,7 @@ class BookingCoreServiceTest {
         InitiateBookingSeatCommand cmd = createValidCommand();
 
         // When
-        Booking booking = service.createDraft(cmd);
+        Booking booking = service.createPending(cmd);
 
         // Then
         assertNotNull(booking.getId());
@@ -88,7 +87,7 @@ class BookingCoreServiceTest {
     @Test
     void createDraft_nullCommand_throwsStructuralException() {
         StructuralException ex = assertThrows(StructuralException.class,
-                () -> service.createDraft(null));
+                () -> service.createPending(null));
         assertNotNull(ex);
     }
 
@@ -103,7 +102,7 @@ class BookingCoreServiceTest {
                 .build();
 
         StructuralException ex = assertThrows(StructuralException.class,
-                () -> service.createDraft(cmd));
+                () -> service.createPending(cmd));
 
         assertNotNull(ex);
     }

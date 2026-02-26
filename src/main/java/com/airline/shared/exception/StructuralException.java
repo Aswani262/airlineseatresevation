@@ -20,4 +20,13 @@ public class StructuralException extends RuntimeException implements NonTransien
         this.httpStatus = HttpStatus.BAD_REQUEST;
         this.notification = notification;
     }
+
+    public StructuralException(String code,String field ,String message) {
+        super("Structural validation failed");
+        this.code = code;
+        this.httpStatus = HttpStatus.BAD_REQUEST;
+        ErrorNotification errorNotification = new ErrorNotification();
+        errorNotification.add(code, field, message);
+        this.notification = errorNotification;
+    }
 }

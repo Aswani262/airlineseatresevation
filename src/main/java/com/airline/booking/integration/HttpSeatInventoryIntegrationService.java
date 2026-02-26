@@ -1,17 +1,17 @@
 package com.airline.booking.integration;
 
-import com.airline.flightmgmt.application.command.LockSeatCommand;
-import com.airline.flightmgmt.application.command.LockSeatUseCase;
-import com.airline.flightmgmt.exception.SeatLockingFailedException;
+import com.airline.flightmgmt.api.dto.SeatBookedResult;
+import com.airline.flightmgmt.application.command.*;
+import com.airline.flightmgmt.application.command.dto.ConfirmSeatCommand;
+import com.airline.flightmgmt.application.command.dto.ExtendExpiryTimeCommand;
+import com.airline.flightmgmt.application.command.dto.ReleaseBookedSeatCommand;
+import com.airline.flightmgmt.domain.HoldStage;
 import com.airline.shared.annotation.IntegrationService;
 import com.airline.shared.model.SeatLockResult;
 import lombok.RequiredArgsConstructor;
-import org.springframework.retry.annotation.Backoff;
-import org.springframework.retry.annotation.Retryable;
 
 import java.util.List;
 import java.util.UUID;
-import java.util.concurrent.TimeoutException;
 // This class is responsible for integrating with the seat inventory service via HTTP calls in case of microservices architecture.
 // It implements the SeatInventoryIntegrationService interface and uses an HTTP client (e.g., RestTemplate, WebClient)
 // to communicate with the inventory service.The lockSeats method will make an HTTP
@@ -34,7 +34,10 @@ import java.util.concurrent.TimeoutException;
 @RequiredArgsConstructor
 public class HttpSeatInventoryIntegrationService implements SeatInventoryIntegrationService {
     // private final String inventoryServiceUrl;
-     private final LockSeatUseCase lockSeatUseCase;
+     private final HoldSeatUseCase lockSeatUseCase;
+     private final ExtendExpiryTimeUseCase extendExpiryTimeUseCase;
+     private final ConfirmSeatUseCase confirmSeatUseCase;
+     private final ReleaseBookedSeatUseCase releaseSeatUseCase;
 
 
 
@@ -47,17 +50,13 @@ public class HttpSeatInventoryIntegrationService implements SeatInventoryIntegra
 //        return true; // Placeholder
 //    }
 
-
-    //Same can be implemented with webclient or rest client
-    // But for integration purpose , consider using Apace camel which provides a higher level abstraction for integration
-    // and supports various protocols and
-    // patterns out of the box,
-    // including HTTP, retries, circuit breakers, etc.
     @Override
-    @Retryable(retryFor = {SeatLockingFailedException.class, TimeoutException.class}, maxAttempts = 2, backoff = @Backoff(delay = 1000)
-    )
-    public SeatLockResult lockSeats(UUID flightId, List<String> seats, UUID bookingId, int holdMinutes) {
-         LockSeatCommand command = new LockSeatCommand(flightId, seats, bookingId, holdMinutes);
-         return lockSeatUseCase.lockSeat(command);
+    public void extendSeatExpiryTimeForPayment(UUID flightId, List<UUID> seatTemplateIds) {
+         extendExpiryTimeUseCase.extendExpiryTime(new ExtendExpiryTimeCommand(flightId,seatTemplateIds, HoldStage.PAYMENT));
+    }
+
+    @Override
+    public void confirmSeat(UUID flightId, List<UUID> seatTemplateIds) {
+         confirmSeatUseCase.confirmSeat(new ConfirmSeatCommand(flightId,seatTemplateIds));
     }
 }

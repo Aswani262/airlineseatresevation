@@ -1,7 +1,7 @@
 package com.airline.flighmngmt.service;
 
 
-import com.airline.flightmgmt.domain.SeatInventory;
+import com.airline.flightmgmt.domain.SeatAssignments;
 import com.airline.flightmgmt.domain.SeatStatus;
 import com.airline.flightmgmt.service.SeatInventoryCoreService;
 import com.airline.flightmgmt.domain.FareClass;
@@ -69,10 +69,10 @@ class SeatInventoryCoreServiceTest {
     @Test
     void lockSeats_locksAvailableSeats_success() {
         // Arrange
-        List<SeatInventory> seats = createSeats(2, SeatStatus.AVAILABLE, null, null);
+        List<SeatAssignments> seats = createSeats(2, SeatStatus.AVAILABLE, null, null);
 
         // Act
-        SeatLockResult result = seatInventoryCoreService.lockSeats(seats, bookingId, ttl);
+        SeatLockResult result = seatInventoryCoreService.holdSeats(seats, bookingId, ttl);
 
         // Assert
         assertTrue(result.success());
@@ -80,7 +80,7 @@ class SeatInventoryCoreServiceTest {
         assertNotNull(result.expiresAt());
         assertTrue(result.expiresAt().isAfter(now));
 
-        for (SeatInventory seat : seats) {
+        for (SeatAssignments seat : seats) {
             assertEquals(SeatStatus.LOCKED, seat.getStatus());
             assertEquals(bookingId, seat.getLockedByBookingId());
             assertEquals(result.expiresAt(), seat.getLockExpiresAt());
@@ -90,17 +90,17 @@ class SeatInventoryCoreServiceTest {
     @Test
     void lockSeats_locksExpiredLockedSeats_success() {
         // Arrange
-        List<SeatInventory> seats = createSeats(1, SeatStatus.LOCKED, UUID.randomUUID(), past);
+        List<SeatAssignments> seats = createSeats(1, SeatStatus.LOCKED, UUID.randomUUID(), past);
 
         // Act
-        SeatLockResult result = seatInventoryCoreService.lockSeats(seats, bookingId, ttl);
+        SeatLockResult result = seatInventoryCoreService.holdSeats(seats, bookingId, ttl);
 
         // Assert
         assertTrue(result.success());
         assertEquals(List.of("A1"), result.seatNumbers());
         assertNotNull(result.expiresAt());
 
-        SeatInventory seat = seats.get(0);
+        SeatAssignments seat = seats.get(0);
         assertEquals(SeatStatus.LOCKED, seat.getStatus());
         assertEquals(bookingId, seat.getLockedByBookingId());
         assertEquals(result.expiresAt(), seat.getLockExpiresAt());
@@ -109,17 +109,17 @@ class SeatInventoryCoreServiceTest {
     @Test
     void lockSeats_failsIfBooked() {
         // Arrange
-        List<SeatInventory> seats = createSeats(1, SeatStatus.BOOKED, null, null);
+        List<SeatAssignments> seats = createSeats(1, SeatStatus.BOOKED, null, null);
 
         // Act
-        SeatLockResult result = seatInventoryCoreService.lockSeats(seats, bookingId, ttl);
+        SeatLockResult result = seatInventoryCoreService.holdSeats(seats, bookingId, ttl);
 
         // Assert
         assertFalse(result.success());
         assertEquals(List.of("A1"), result.seatNumbers());
         assertNotNull(result.expiresAt());
 
-        SeatInventory seat = seats.get(0);
+        SeatAssignments seat = seats.get(0);
         assertEquals(SeatStatus.BOOKED, seat.getStatus());
         assertNull(seat.getLockedByBookingId());
         assertNull(seat.getLockExpiresAt());
@@ -128,14 +128,14 @@ class SeatInventoryCoreServiceTest {
     @Test
     void lockSeats_failsIfLockedByOtherNotExpired() {
         // Arrange
-        List<SeatInventory> seats = createSeats(1, SeatStatus.LOCKED, UUID.randomUUID(), future);
+        List<SeatAssignments> seats = createSeats(1, SeatStatus.LOCKED, UUID.randomUUID(), future);
 
         // Act
-        SeatLockResult result = seatInventoryCoreService.lockSeats(seats, bookingId, ttl);
+        SeatLockResult result = seatInventoryCoreService.holdSeats(seats, bookingId, ttl);
 
         // Assert
         assertFalse(result.success());
-        SeatInventory seat = seats.get(0);
+        SeatAssignments seat = seats.get(0);
         assertEquals(SeatStatus.LOCKED, seat.getStatus());
         assertNotEquals(bookingId, seat.getLockedByBookingId());
         assertEquals(future, seat.getLockExpiresAt());
@@ -144,12 +144,12 @@ class SeatInventoryCoreServiceTest {
     @Test
     void lockSeats_mixedSuccess() {
         // Arrange
-        SeatInventory available = createSeat("A1", SeatStatus.AVAILABLE, null, null);
-        SeatInventory booked = createSeat("A2", SeatStatus.BOOKED, null, null);
-        List<SeatInventory> seats = List.of(available, booked);
+        SeatAssignments available = createSeat("A1", SeatStatus.AVAILABLE, null, null);
+        SeatAssignments booked = createSeat("A2", SeatStatus.BOOKED, null, null);
+        List<SeatAssignments> seats = List.of(available, booked);
 
         // Act
-        SeatLockResult result = seatInventoryCoreService.lockSeats(seats, bookingId, ttl);
+        SeatLockResult result = seatInventoryCoreService.holdSeats(seats, bookingId, ttl);
 
         // Assert
         assertFalse(result.success());
@@ -166,20 +166,20 @@ class SeatInventoryCoreServiceTest {
 
     @Test
     void lockSeats_throwsIfEmpty() {
-        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> seatInventoryCoreService.lockSeats(new ArrayList<>(), bookingId, ttl));
+        IllegalArgumentException exception = assertThrows(IllegalArgumentException.class, () -> seatInventoryCoreService.holdSeats(new ArrayList<>(), bookingId, ttl));
         assertEquals("seats is required", exception.getMessage());
     }
 
     @Test
     void confirmLockedSeatsOrThrow_confirmsValidLocks() {
         // Arrange
-        List<SeatInventory> seats = createSeats(2, SeatStatus.LOCKED, bookingId, future);
+        List<SeatAssignments> seats = createSeats(2, SeatStatus.LOCKED, bookingId, future);
 
         // Act
         assertDoesNotThrow(() -> seatInventoryCoreService.confirmLockedSeatsOrThrow(seats, bookingId));
 
         // Assert
-        for (SeatInventory seat : seats) {
+        for (SeatAssignments seat : seats) {
             assertEquals(SeatStatus.BOOKED, seat.getStatus());
             assertNull(seat.getLockedByBookingId());
             assertNull(seat.getLockExpiresAt());
@@ -189,7 +189,7 @@ class SeatInventoryCoreServiceTest {
     @Test
     void confirmLockedSeatsOrThrow_throwsIfNotLockedByBooking() {
         // Arrange
-        List<SeatInventory> seats = createSeats(1, SeatStatus.LOCKED, UUID.randomUUID(), future);
+        List<SeatAssignments> seats = createSeats(1, SeatStatus.LOCKED, UUID.randomUUID(), future);
 
         // Act & Assert
         IllegalStateException exception = assertThrows(IllegalStateException.class, () -> seatInventoryCoreService.confirmLockedSeatsOrThrow(seats, bookingId));
@@ -199,7 +199,7 @@ class SeatInventoryCoreServiceTest {
     @Test
     void confirmLockedSeatsOrThrow_throwsIfExpired() {
         // Arrange
-        List<SeatInventory> seats = createSeats(1, SeatStatus.LOCKED, bookingId, past);
+        List<SeatAssignments> seats = createSeats(1, SeatStatus.LOCKED, bookingId, past);
 
         // Act & Assert
         IllegalStateException exception = assertThrows(IllegalStateException.class, () -> seatInventoryCoreService.confirmLockedSeatsOrThrow(seats, bookingId));
@@ -209,7 +209,7 @@ class SeatInventoryCoreServiceTest {
     @Test
     void confirmLockedSeatsOrThrow_throwsIfNotLocked() {
         // Arrange
-        List<SeatInventory> seats = createSeats(1, SeatStatus.AVAILABLE, null, null);
+        List<SeatAssignments> seats = createSeats(1, SeatStatus.AVAILABLE, null, null);
 
         // Act & Assert
         IllegalStateException exception = assertThrows(IllegalStateException.class, () -> seatInventoryCoreService.confirmLockedSeatsOrThrow(seats, bookingId));
@@ -225,13 +225,13 @@ class SeatInventoryCoreServiceTest {
     @Test
     void releaseLockedSeatsOrThrow_releasesValidLocks() {
         // Arrange
-        List<SeatInventory> seats = createSeats(2, SeatStatus.LOCKED, bookingId, future);
+        List<SeatAssignments> seats = createSeats(2, SeatStatus.LOCKED, bookingId, future);
 
         // Act
         assertDoesNotThrow(() -> seatInventoryCoreService.releaseLockedSeatsOrThrow(seats, bookingId));
 
         // Assert
-        for (SeatInventory seat : seats) {
+        for (SeatAssignments seat : seats) {
             assertEquals(SeatStatus.AVAILABLE, seat.getStatus());
             assertNull(seat.getLockedByBookingId());
             assertNull(seat.getLockExpiresAt());
@@ -241,7 +241,7 @@ class SeatInventoryCoreServiceTest {
     @Test
     void releaseLockedSeatsOrThrow_throwsIfNotLockedByBooking() {
         // Arrange
-        List<SeatInventory> seats = createSeats(1, SeatStatus.LOCKED, UUID.randomUUID(), future);
+        List<SeatAssignments> seats = createSeats(1, SeatStatus.LOCKED, UUID.randomUUID(), future);
 
         // Act & Assert
         IllegalStateException exception = assertThrows(IllegalStateException.class, () -> seatInventoryCoreService.releaseLockedSeatsOrThrow(seats, bookingId));
@@ -251,7 +251,7 @@ class SeatInventoryCoreServiceTest {
     @Test
     void releaseLockedSeatsOrThrow_throwsIfNotLocked() {
         // Arrange
-        List<SeatInventory> seats = createSeats(1, SeatStatus.AVAILABLE, null, null);
+        List<SeatAssignments> seats = createSeats(1, SeatStatus.AVAILABLE, null, null);
 
         // Act & Assert
         IllegalStateException exception = assertThrows(IllegalStateException.class, () -> seatInventoryCoreService.releaseLockedSeatsOrThrow(seats, bookingId));
@@ -267,13 +267,13 @@ class SeatInventoryCoreServiceTest {
     @Test
     void releaseBookedSeats_releasesBooked() {
         // Arrange
-        List<SeatInventory> seats = createSeats(2, SeatStatus.BOOKED, null, null);
+        List<SeatAssignments> seats = createSeats(2, SeatStatus.BOOKED, null, null);
 
         // Act
         seatInventoryCoreService.releaseBookedSeats(seats);
 
         // Assert
-        for (SeatInventory seat : seats) {
+        for (SeatAssignments seat : seats) {
             assertEquals(SeatStatus.AVAILABLE, seat.getStatus());
         }
     }
@@ -281,10 +281,10 @@ class SeatInventoryCoreServiceTest {
     @Test
     void releaseBookedSeats_ignoresOthers() {
         // Arrange
-        SeatInventory booked = createSeat("A1", SeatStatus.BOOKED, null, null);
-        SeatInventory available = createSeat("A2", SeatStatus.AVAILABLE, null, null);
-        SeatInventory locked = createSeat("A3", SeatStatus.LOCKED, bookingId, future);
-        List<SeatInventory> seats = List.of(booked, available, locked);
+        SeatAssignments booked = createSeat("A1", SeatStatus.BOOKED, null, null);
+        SeatAssignments available = createSeat("A2", SeatStatus.AVAILABLE, null, null);
+        SeatAssignments locked = createSeat("A3", SeatStatus.LOCKED, bookingId, future);
+        List<SeatAssignments> seats = List.of(booked, available, locked);
 
         // Act
         seatInventoryCoreService.releaseBookedSeats(seats);
@@ -295,16 +295,16 @@ class SeatInventoryCoreServiceTest {
         assertEquals(SeatStatus.LOCKED, locked.getStatus());
     }
 
-    private List<SeatInventory> createSeats(int count, SeatStatus status, UUID lockedBy, OffsetDateTime expiresAt) {
-        List<SeatInventory> seats = new ArrayList<>();
+    private List<SeatAssignments> createSeats(int count, SeatStatus status, UUID lockedBy, OffsetDateTime expiresAt) {
+        List<SeatAssignments> seats = new ArrayList<>();
         for (int i = 1; i <= count; i++) {
             seats.add(createSeat("A" + i, status, lockedBy, expiresAt));
         }
         return seats;
     }
 
-    private SeatInventory createSeat(String seatNumber, SeatStatus status, UUID lockedBy, OffsetDateTime expiresAt) {
-        return SeatInventory.builder()
+    private SeatAssignments createSeat(String seatNumber, SeatStatus status, UUID lockedBy, OffsetDateTime expiresAt) {
+        return SeatAssignments.builder()
                 .id(UUID.randomUUID())
                 .flightId(UUID.randomUUID())
                 .seatNumber(seatNumber)

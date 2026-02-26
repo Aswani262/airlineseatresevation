@@ -1,11 +1,10 @@
 package com.airline.flighmngmt.application;
 
-import com.airline.flightmgmt.application.command.LockSeatCommand;
-import com.airline.flightmgmt.application.command.LockSeatHandler;
-import com.airline.flightmgmt.domain.FareClass;
-import com.airline.flightmgmt.domain.SeatInventory;
+import com.airline.flightmgmt.application.command.dto.HoldSeatCommand;
+import com.airline.flightmgmt.application.command.HoldSeatHandler;
+import com.airline.flightmgmt.domain.SeatAssignments;
 import com.airline.flightmgmt.domain.SeatStatus;
-import com.airline.flightmgmt.exception.SeatLockingFailedException;
+import com.airline.flightmgmt.exception.SeatHoldingFailedException;
 import com.airline.flightmgmt.exception.SeatNotAvailableException;
 import com.airline.flightmgmt.repository.ISeatInventoryCommandRepository;
 import com.airline.flightmgmt.service.ISeatInventoryService;
@@ -18,7 +17,6 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.dao.OptimisticLockingFailureException;
 
-import java.math.BigDecimal;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
@@ -38,7 +36,7 @@ class LockSeatHandlerTest {
     private ISeatInventoryService seatInventoryService;
 
     @InjectMocks
-    private LockSeatHandler handler;
+    private HoldSeatHandler handler;
 
     @Test
     void lockSeat_success_allSeatsAvailable_shouldNormalize_find_lock_saveAndReturnResult() {
@@ -48,9 +46,9 @@ class LockSeatHandlerTest {
         List<String> originalSeats = List.of("12a", "14b");
         List<String> normalizedSeats = List.of("12A", "14B");
 
-        LockSeatCommand command = new LockSeatCommand(flightId, originalSeats, bookingId, 10);
+        HoldSeatCommand command = new HoldSeatCommand(flightId, originalSeats, bookingId, 10);
 
-        List<SeatInventory> foundSeats = List.of(
+        List<SeatAssignments> foundSeats = List.of(
                 createAvailableSeat(flightId, "12A"),
                 createAvailableSeat(flightId, "14B")
         );
@@ -59,13 +57,13 @@ class LockSeatHandlerTest {
         SeatLockResult lockResult = new SeatLockResult(true, normalizedSeats, expiresAt);
 
         when(seatInventoryService.normalizeSeats(originalSeats)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(flightId, normalizedSeats))
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(flightId, normalizedSeats))
                 .thenReturn(foundSeats);
-        when(seatInventoryService.lockSeats(foundSeats, bookingId, Duration.ofMinutes(10)))
+        when(seatInventoryService.holdSeats(foundSeats, bookingId, Duration.ofMinutes(10)))
                 .thenReturn(lockResult);
 
         // When
-        SeatLockResult result = handler.lockSeat(command);
+        SeatLockResult result = handler.holdSeat(command);
 
         // Then
         assertNotNull(result);
@@ -77,11 +75,11 @@ class LockSeatHandlerTest {
         verify(seatInventoryService).normalizeSeats(originalSeats);
 
         ArgumentCaptor<List<String>> findCaptor = ArgumentCaptor.forClass(List.class);
-        verify(seatInventoryRepository).findByFlightIdAndSeatNumberIn(eq(flightId), findCaptor.capture());
+        verify(seatInventoryRepository).findByFlightIdAndTemplateIdIn(eq(flightId), findCaptor.capture());
         assertEquals(normalizedSeats, findCaptor.getValue());
 
-        ArgumentCaptor<List<SeatInventory>> lockCaptor = ArgumentCaptor.forClass(List.class);
-        verify(seatInventoryService).lockSeats(lockCaptor.capture(), eq(bookingId), eq(Duration.ofMinutes(10)));
+        ArgumentCaptor<List<SeatAssignments>> lockCaptor = ArgumentCaptor.forClass(List.class);
+        verify(seatInventoryService).holdSeats(lockCaptor.capture(), eq(bookingId), eq(Duration.ofMinutes(10)));
         assertSame(foundSeats, lockCaptor.getValue());
 
         verify(seatInventoryRepository).saveAll(foundSeats);
@@ -95,22 +93,22 @@ class LockSeatHandlerTest {
         List<String> originalSeats = List.of("12a");
         List<String> normalizedSeats = List.of("12A");
 
-        LockSeatCommand command = new LockSeatCommand(flightId, originalSeats, bookingId, 10);
+        HoldSeatCommand command = new HoldSeatCommand(flightId, originalSeats, bookingId, 10);
 
-        List<SeatInventory> foundSeats = List.of(createAvailableSeat(flightId, "12A"));
+        List<SeatAssignments> foundSeats = List.of(createAvailableSeat(flightId, "12A"));
 
         SeatLockResult failedLock = new SeatLockResult(false, normalizedSeats, OffsetDateTime.now().plusMinutes(10));
 
         when(seatInventoryService.normalizeSeats(originalSeats)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(flightId, normalizedSeats))
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(flightId, normalizedSeats))
                 .thenReturn(foundSeats);
-        when(seatInventoryService.lockSeats(foundSeats, bookingId, Duration.ofMinutes(10)))
+        when(seatInventoryService.holdSeats(foundSeats, bookingId, Duration.ofMinutes(10)))
                 .thenReturn(failedLock);
 
         // When & Then
         SeatNotAvailableException ex = assertThrows(
                 SeatNotAvailableException.class,
-                () -> handler.lockSeat(command)
+                () -> handler.holdSeat(command)
         );
 
         // Exception message typically contains seat numbers (as per common pattern)
@@ -127,25 +125,25 @@ class LockSeatHandlerTest {
         List<String> originalSeats = List.of("1A");
         List<String> normalizedSeats = List.of("1A");
 
-        LockSeatCommand command = new LockSeatCommand(flightId, originalSeats, bookingId, 10);
+        HoldSeatCommand command = new HoldSeatCommand(flightId, originalSeats, bookingId, 10);
 
-        List<SeatInventory> foundSeats = List.of(createAvailableSeat(flightId, "1A"));
+        List<SeatAssignments> foundSeats = List.of(createAvailableSeat(flightId, "1A"));
 
         SeatLockResult successLock = new SeatLockResult(true, normalizedSeats, OffsetDateTime.now().plusMinutes(10));
 
         when(seatInventoryService.normalizeSeats(originalSeats)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(flightId, normalizedSeats))
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(flightId, normalizedSeats))
                 .thenReturn(foundSeats);
-        when(seatInventoryService.lockSeats(foundSeats, bookingId, Duration.ofMinutes(10)))
+        when(seatInventoryService.holdSeats(foundSeats, bookingId, Duration.ofMinutes(10)))
                 .thenReturn(successLock);
 
         doThrow(new OptimisticLockingFailureException("Version conflict"))
                 .when(seatInventoryRepository).saveAll(any());
 
         // When & Then
-        SeatLockingFailedException ex = assertThrows(
-                SeatLockingFailedException.class,
-                () -> handler.lockSeat(command)
+        SeatHoldingFailedException ex = assertThrows(
+                SeatHoldingFailedException.class,
+                () -> handler.holdSeat(command)
         );
 
 
@@ -155,16 +153,13 @@ class LockSeatHandlerTest {
 
     // ==================== Helper ====================
 
-    private SeatInventory createAvailableSeat(UUID flightId, String seatNumber) {
-        return SeatInventory.builder()
+    private SeatAssignments createAvailableSeat(UUID flightId, UUID seatTemplateId) {
+        return SeatAssignments.builder()
                 .id(UUID.randomUUID())
                 .flightId(flightId)
-                .seatNumber(seatNumber)
-                .fareClass(FareClass.ECONOMY)
                 .status(SeatStatus.AVAILABLE)
-                .lockedByBookingId(null)
+                .seatTemplateId(seatTemplateId)
                 .lockExpiresAt(null)
-                .price(BigDecimal.valueOf(5000))
                 .build();
     }
 }

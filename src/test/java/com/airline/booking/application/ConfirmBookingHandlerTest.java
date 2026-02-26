@@ -9,7 +9,7 @@ import com.airline.booking.domain.model.BookingStatus;
 import com.airline.booking.domain.model.Passenger;
 import com.airline.booking.exception.BookingNotFound;
 import com.airline.booking.exception.SeatNotFound;
-import com.airline.flightmgmt.domain.SeatInventory;
+import com.airline.flightmgmt.domain.SeatAssignments;
 import com.airline.booking.domain.model.Ticket;
 import com.airline.booking.domain.model.TicketStatus;
 import com.airline.booking.repository.IBookingCommandRepository;
@@ -54,7 +54,7 @@ class ConfirmBookingHandlerTest {
 
     private ConfirmBookingCommand command;
     private Booking mockBooking;
-    private List<SeatInventory> mockSeats;
+    private List<SeatAssignments> mockSeats;
 
     @BeforeEach
     void setUp() {
@@ -86,12 +86,12 @@ class ConfirmBookingHandlerTest {
                 .build();
 
         mockSeats = List.of(
-                SeatInventory.builder()
+                SeatAssignments.builder()
                         .id(UUID.randomUUID())
                         .flightId(mockBooking.getFlightId())
                         .seatNumber("A1")
                         .build(),
-                SeatInventory.builder()
+                SeatAssignments.builder()
                         .id(UUID.randomUUID())
                         .flightId(mockBooking.getFlightId())
                         .seatNumber("A2")
@@ -117,7 +117,7 @@ class ConfirmBookingHandlerTest {
 
         when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
         when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
         doNothing().when(seatInventoryService).confirmLockedSeatsOrThrow(mockSeats, mockBooking.getId());
         when(seatInventoryRepository.saveAll(anyIterable())).thenReturn(mockSeats);
         when(bookingRepository.save(any(Booking.class))).thenReturn(mockBooking);
@@ -136,7 +136,7 @@ class ConfirmBookingHandlerTest {
         // Verify interactions
         verify(bookingCoreService).confirm(mockBooking);
         verify(seatInventoryService).normalizeSeats(seatNumbers);
-        verify(seatInventoryRepository).findByFlightIdAndSeatNumberIn(mockBooking.getFlightId(), normalizedSeats);
+        verify(seatInventoryRepository).findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats);
         verify(seatInventoryService).confirmLockedSeatsOrThrow(mockSeats, mockBooking.getId());
         verify(seatInventoryRepository).saveAll(mockSeats);
         verify(bookingRepository).save(mockBooking);
@@ -167,7 +167,7 @@ class ConfirmBookingHandlerTest {
         // Verify no further actions
         verify(bookingCoreService).confirm(mockBooking);
         verify(seatInventoryService, never()).normalizeSeats(any());
-        verify(seatInventoryRepository, never()).findByFlightIdAndSeatNumberIn(any(), any());
+        verify(seatInventoryRepository, never()).findByFlightIdAndTemplateIdIn(any(), any());
         verify(seatInventoryService, never()).confirmLockedSeatsOrThrow(any(), any());
         verify(seatInventoryRepository, never()).saveAll(any());
         verify(bookingRepository, never()).save(any());
@@ -189,7 +189,7 @@ class ConfirmBookingHandlerTest {
         // Arrange
         List<String> seatNumbers = List.of("A1", "A2");
         List<String> normalizedSeats = List.of("A1", "A2");
-        List<SeatInventory> partialSeats = List.of(mockSeats.get(0)); // Mismatch
+        List<SeatAssignments> partialSeats = List.of(mockSeats.get(0)); // Mismatch
 
         doAnswer(invocation -> {
             mockBooking.setStatus(BookingStatus.CONFIRMED);
@@ -198,7 +198,7 @@ class ConfirmBookingHandlerTest {
 
         when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
         when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(partialSeats);
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(partialSeats);
 
         // Act & Assert
         assertThrows(SeatNotFound.class, () -> confirmBookingHandler.bookingFinalize(command));
@@ -221,7 +221,7 @@ class ConfirmBookingHandlerTest {
 
         when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
         when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
         doThrow(new IllegalStateException("Seats not locked")).when(seatInventoryService).confirmLockedSeatsOrThrow(mockSeats, mockBooking.getId());
 
         // Act & Assert
@@ -245,7 +245,7 @@ class ConfirmBookingHandlerTest {
 
         when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
         when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
         doNothing().when(seatInventoryService).confirmLockedSeatsOrThrow(mockSeats, mockBooking.getId());
         when(seatInventoryRepository.saveAll(anyIterable())).thenThrow(OptimisticLockingFailureException.class);
 
@@ -269,7 +269,7 @@ class ConfirmBookingHandlerTest {
 
         when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
         when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
         doNothing().when(seatInventoryService).confirmLockedSeatsOrThrow(mockSeats, mockBooking.getId());
         when(seatInventoryRepository.saveAll(anyIterable())).thenReturn(mockSeats);
         when(bookingRepository.save(any(Booking.class))).thenThrow(OptimisticLockingFailureException.class);

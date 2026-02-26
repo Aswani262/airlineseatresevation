@@ -6,6 +6,5 @@ import java.util.UUID;
 public record BookSeatResult(
         UUID bookingId,
         String bookingReference,
-        String status,
-        OffsetDateTime holdExpiresAt
+        String status
 ) {}

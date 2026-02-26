@@ -7,7 +7,7 @@ import java.util.List;
 
 public class SeatNotAvailableException extends BusinessException {
 
-    public SeatNotAvailableException(List<String> seatNumber) {
-        super("SEAT_NOT_AVAILABLE", "Seat " + seatNumber.toString() + " is not available.", HttpStatus.CONFLICT);
+    public SeatNotAvailableException(String message) {
+        super("SEAT_NOT_AVAILABLE",message, HttpStatus.CONFLICT);
     }
 }

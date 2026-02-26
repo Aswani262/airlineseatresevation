@@ -7,7 +7,6 @@ import org.springframework.data.annotation.Version;
 import org.springframework.data.relational.core.mapping.Table;
 
 
-import java.math.BigDecimal;
 import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
@@ -30,13 +29,13 @@ public class Flight extends BaseEntity {
     private FlightStatus status;
 
     // Base price for each fare class, used for dynamic pricing and fare calculations
-    private BigDecimal basePrice;
+    private Map<FareClass, Integer>  priceByFareClass;
 
     private int totalSeats;
     private int availableSeats;
 
     //Copy from Aircraft configuration while create a flight, because
-    // we need to keep track of available seats by fare class for booking purposes
+    //we need to keep track of available seats by fare class for booking purposes
     private Map<FareClass, Integer>  seatConfiguration;
 
     @Version

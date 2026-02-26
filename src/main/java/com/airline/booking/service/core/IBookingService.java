@@ -5,7 +5,7 @@ import com.airline.booking.domain.model.Booking;
 
 public interface IBookingService {
 
-    Booking createDraft(InitiateBookingSeatCommand cmd);
+    Booking createPending(InitiateBookingSeatCommand cmd);
 
     // New method added for cancel logic (validation and state change)
     void cancel(Booking booking);

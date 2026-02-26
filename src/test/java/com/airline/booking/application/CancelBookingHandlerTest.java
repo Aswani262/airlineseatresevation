@@ -7,9 +7,9 @@ import com.airline.booking.domain.model.Booking;
 import com.airline.booking.domain.model.BookingSeat;
 import com.airline.booking.domain.model.BookingStatus;
 import com.airline.booking.exception.BookingFailed;
-import com.airline.flightmgmt.domain.SeatInventory;
+import com.airline.flightmgmt.domain.SeatAssignments;
 import com.airline.booking.repository.IBookingCommandRepository;
-import com.airline.flightmgmt.exception.SeatLockingFailedException;
+import com.airline.flightmgmt.exception.SeatHoldingFailedException;
 import com.airline.flightmgmt.repository.ISeatInventoryCommandRepository;
 import com.airline.booking.service.core.IBookingService;
 import com.airline.flightmgmt.service.ISeatInventoryService;
@@ -50,7 +50,7 @@ class CancelBookingHandlerTest {
 
     private CancelBookingCommand command;
     private Booking mockBooking;
-    private List<SeatInventory> mockSeats;
+    private List<SeatAssignments> mockSeats;
 
     @BeforeEach
     void setUp() {
@@ -72,12 +72,12 @@ class CancelBookingHandlerTest {
                 .build();
 
         mockSeats = List.of(
-                SeatInventory.builder()
+                SeatAssignments.builder()
                         .id(UUID.randomUUID())
                         .flightId(mockBooking.getFlightId())
                         .seatNumber("A1")
                         .build(),
-                SeatInventory.builder()
+                SeatAssignments.builder()
                         .id(UUID.randomUUID())
                         .flightId(mockBooking.getFlightId())
                         .seatNumber("A2")
@@ -94,7 +94,7 @@ class CancelBookingHandlerTest {
 
         when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
         when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
         doNothing().when(seatInventoryService).releaseLockedSeatsOrThrow(mockSeats, mockBooking.getId());
         when(seatInventoryRepository.saveAll(anyIterable())).thenReturn(mockSeats);
         doNothing().when(bookingService).cancel(mockBooking);
@@ -126,7 +126,7 @@ class CancelBookingHandlerTest {
 
         when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
         when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
         doNothing().when(seatInventoryService).releaseBookedSeats(mockSeats);
         when(seatInventoryRepository.saveAll(anyIterable())).thenReturn(mockSeats);
         doNothing().when(bookingService).cancel(mockBooking);
@@ -163,7 +163,7 @@ class CancelBookingHandlerTest {
 
         // Verify no further interactions
         verify(seatInventoryService, never()).normalizeSeats(any());
-        verify(seatInventoryRepository, never()).findByFlightIdAndSeatNumberIn(any(), any());
+        verify(seatInventoryRepository, never()).findByFlightIdAndTemplateIdIn(any(), any());
         verify(seatInventoryService, never()).releaseLockedSeatsOrThrow(any(), any());
         verify(seatInventoryService, never()).releaseBookedSeats(any());
         verify(seatInventoryRepository, never()).saveAll(any());
@@ -185,7 +185,7 @@ class CancelBookingHandlerTest {
 
         // Verify no further interactions
         verify(seatInventoryService, never()).normalizeSeats(any());
-        verify(seatInventoryRepository, never()).findByFlightIdAndSeatNumberIn(any(), any());
+        verify(seatInventoryRepository, never()).findByFlightIdAndTemplateIdIn(any(), any());
         verify(seatInventoryService, never()).releaseLockedSeatsOrThrow(any(), any());
         verify(seatInventoryService, never()).releaseBookedSeats(any());
         verify(seatInventoryRepository, never()).saveAll(any());
@@ -214,11 +214,11 @@ class CancelBookingHandlerTest {
         mockBooking.setStatus(BookingStatus.DRAFT);
         List<String> seatNumbers = List.of("A1", "A2");
         List<String> normalizedSeats = List.of("A1", "A2");
-        List<SeatInventory> partialSeats = List.of(mockSeats.get(0)); // Mismatch
+        List<SeatAssignments> partialSeats = List.of(mockSeats.get(0)); // Mismatch
 
         when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
         when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(partialSeats);
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(partialSeats);
 
         // Act & Assert
         IllegalStateException exception = assertThrows(IllegalStateException.class, () -> cancelBookingHandler.cancel(command));
@@ -239,12 +239,12 @@ class CancelBookingHandlerTest {
 
         when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
         when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
         doNothing().when(seatInventoryService).releaseLockedSeatsOrThrow(mockSeats, mockBooking.getId());
         when(seatInventoryRepository.saveAll(anyIterable())).thenThrow(OptimisticLockingFailureException.class);
 
         // Act & Assert
-        SeatLockingFailedException exception = assertThrows(SeatLockingFailedException.class, () -> cancelBookingHandler.cancel(command));
+        SeatHoldingFailedException exception = assertThrows(SeatHoldingFailedException.class, () -> cancelBookingHandler.cancel(command));
         assertEquals("Seat release failed due to concurrent modification; please retry", exception.getMessage());
 
         // Verify no booking save
@@ -261,7 +261,7 @@ class CancelBookingHandlerTest {
 
         when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
         when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndSeatNumberIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
+        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
         doNothing().when(seatInventoryService).releaseLockedSeatsOrThrow(mockSeats, mockBooking.getId());
         when(seatInventoryRepository.saveAll(anyIterable())).thenReturn(mockSeats);
         doNothing().when(bookingService).cancel(mockBooking);

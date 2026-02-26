@@ -16,8 +16,6 @@ public class InitiateBookingSeatCommand {
     private UUID flightId;
     private UUID customerId;
 
-    private String currency; // INR/USD
-
     private List<Passenger> passengers;
     private List<SeatSelection> seatSelections;
 
@@ -28,14 +26,12 @@ public class InitiateBookingSeatCommand {
         private String passengerType; // ADULT/CHILD/INFANT
         private String email;
         private String phone;
-        private String passportNumber;
     }
 
     @Getter @Setter @NoArgsConstructor @AllArgsConstructor @Builder
     public static class SeatSelection {
         private Integer passengerIndex; // index into passengers list
-        private String seatNumber;      // E12
-        private String fareClass;       // ECONOMY_SAVER
+        private UUID seatTemplateId;
         private BigDecimal price;
     }
 }

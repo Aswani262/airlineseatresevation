@@ -1,7 +1,12 @@
 package com.airline.flightmgmt.service;
 
-import com.airline.flightmgmt.domain.SeatInventory;
+import com.airline.flightmgmt.domain.HoldStage;
+import com.airline.flightmgmt.domain.SeatAssignments;
 import com.airline.flightmgmt.domain.SeatStatus;
+import com.airline.flightmgmt.exception.SeatAlreadyHeldException;
+import com.airline.flightmgmt.exception.SeatCannotBlankException;
+import com.airline.flightmgmt.exception.SeatHoldingExpiredException;
+import com.airline.flightmgmt.exception.SeatNotAvailableException;
 import com.airline.shared.annotation.CoreService;
 import com.airline.shared.model.SeatLockResult;
 import lombok.RequiredArgsConstructor;
@@ -10,106 +15,144 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.OffsetDateTime;
 import java.util.List;
-import java.util.Locale;
+import java.util.Objects;
 import java.util.UUID;
-import java.util.stream.Collectors;
 
 @CoreService
 @RequiredArgsConstructor
 public class SeatInventoryCoreService implements ISeatInventoryService {
 
     @Override
-    public SeatLockResult lockSeats(List<SeatInventory> seats, UUID bookingId, Duration ttl) {
+    public SeatLockResult holdSeats(List<SeatAssignments> seats, Duration ttl) {
         if (seats.isEmpty()) {
-            throw new IllegalArgumentException("seats is required");
+            throw new SeatCannotBlankException();
         }
 
-        OffsetDateTime now = OffsetDateTime.now(Clock.systemUTC());
-        OffsetDateTime expiresAt = now.plusSeconds(ttl.getSeconds());
+        OffsetDateTime expiresAt = OffsetDateTime.now(Clock.systemUTC()).plusSeconds(ttl.getSeconds());
 
-        int successCount = 0;
-        for (SeatInventory seat : seats) {
-            if (canLock(seat, now)) {
-                seat.setStatus(SeatStatus.LOCKED);
-                seat.setLockedByBookingId(bookingId);
-                seat.setLockExpiresAt(expiresAt);
-                successCount++;
-            }
+        for (SeatAssignments seat : seats) {
+            seat.setStatus(SeatStatus.HOLD);
+            seat.setLockExpiresAt(expiresAt);
         }
 
-        boolean success = successCount == seats.size();
-        List<String> seatNumbers = seats.stream().map(SeatInventory::getSeatNumber).collect(Collectors.toList());
-        return new SeatLockResult(success, seatNumbers, expiresAt);
+        return new SeatLockResult(true, expiresAt);
     }
 
-    private boolean canLock(SeatInventory seat, OffsetDateTime now) {
-        return seat.getStatus() == SeatStatus.AVAILABLE ||
-               (seat.getStatus() == SeatStatus.LOCKED && (seat.getLockExpiresAt() == null || now.isAfter(seat.getLockExpiresAt())));
+    public void validateAndPrepareSeatsForHolding(List<SeatAssignments> seats, HoldStage stage) {
+        OffsetDateTime now = OffsetDateTime.now(Clock.systemUTC());
+
+        for (SeatAssignments seat : seats) {
+
+            if (seat.getStatus() == SeatStatus.BOOKED) {
+                throw new SeatNotAvailableException("Seat is already booked");
+            }
+
+            if (seat.getStatus() == SeatStatus.HOLD) {
+
+                boolean isExpired =  now.isAfter(seat.getLockExpiresAt());
+
+                if (isExpired) {
+                    throw new SeatHoldingExpiredException("One or more seat is holding is expired");
+                } else {
+                    seat.setStatus(SeatStatus.AVAILABLE);
+                    seat.setLockExpiresAt(null);
+                    seat.setHoldStage(stage);
+                    seat.setBookingId(null);
+                }
+            }
+        }
     }
 
     @Override
-    public void confirmLockedSeatsOrThrow(List<SeatInventory> seats, UUID bookingId) {
+    public SeatLockResult extendSeatExpiryForPayment(List<SeatAssignments> seats, Duration paymentWindow) {
         if (seats.isEmpty()) {
-            throw new IllegalArgumentException("seats is required");
+            throw new SeatCannotBlankException();
+        }
+        validateForPaymentExtension(seats);
+
+        OffsetDateTime expiresAt = OffsetDateTime.now(Clock.systemUTC()).plus(paymentWindow);
+
+        for (SeatAssignments seat : seats) {
+            seat.setLockExpiresAt(expiresAt);
+            seat.setHoldStage(HoldStage.PAYMENT);
+        }
+        return new SeatLockResult(true, expiresAt);
+    }
+
+
+    // Your existing methods (slightly cleaned for consistency)
+    @Override
+    public void confirmLockedSeatsOrThrow(List<SeatAssignments> seats) {
+        if (seats.isEmpty()) {
+            throw new SeatCannotBlankException();
         }
 
         OffsetDateTime now = OffsetDateTime.now(Clock.systemUTC());
 
-        int confirmedCount = 0;
-        for (SeatInventory seat : seats) {
-            if (seat.getStatus() == SeatStatus.LOCKED &&
-                seat.getLockedByBookingId().equals(bookingId) &&
-                (seat.getLockExpiresAt() == null || !now.isAfter(seat.getLockExpiresAt()))) {
+        for (SeatAssignments seat : seats) {
+            if (seat.getStatus() == SeatStatus.BOOKED) {
+                continue;
+            }
+            if (seat.getStatus() != SeatStatus.HOLD ||
+                    (seat.getLockExpiresAt() != null && now.isAfter(seat.getLockExpiresAt()))) {
+                throw new SeatNotAvailableException(
+                        "Seat " + seat.getSeatTemplateId() + " is not locked or lock has expired");
+            }
+        }
+
+        for (SeatAssignments seat : seats) {
+            if (seat.getStatus() == SeatStatus.HOLD) {
                 seat.setStatus(SeatStatus.BOOKED);
-                seat.setLockedByBookingId(null);
                 seat.setLockExpiresAt(null);
-                confirmedCount++;
             }
-        }
-
-        if (confirmedCount != seats.size()) {
-            throw new IllegalStateException("Seats are not locked by this booking or lock expired");
         }
     }
 
     @Override
-    public void releaseLockedSeatsOrThrow(List<SeatInventory> seats, UUID bookingId) {
-        if (seats.isEmpty()) {
-            throw new IllegalArgumentException("seats is required");
-        }
-
-        int updatedCount = 0;
-        for (SeatInventory seat : seats) {
-            if (seat.getStatus() == SeatStatus.LOCKED && seat.getLockedByBookingId().equals(bookingId)) {
-                seat.setStatus(SeatStatus.AVAILABLE);
-                seat.setLockedByBookingId(null);
-                seat.setLockExpiresAt(null);
-                updatedCount++;
-            }
-        }
-
-        if (updatedCount != seats.size()) {
-            throw new IllegalStateException("Some seats were not locked by this booking (or already released/expired)");
-        }
-    }
-
-    @Override
-    public void releaseBookedSeats(List<SeatInventory> seats) {
-        for (SeatInventory seat : seats) {
+    public void releaseBookedSeats(List<SeatAssignments> seats) {
+        for (SeatAssignments seat : seats) {
             if (seat.getStatus() == SeatStatus.BOOKED) {
                 seat.setStatus(SeatStatus.AVAILABLE);
+                seat.setBookingId(null);
+                seat.setLockExpiresAt(null);
+                seat.setHoldStage(null);
             }
         }
     }
 
     @Override
-    public List<String> normalizeSeats(List<String> seatNumbers) {
-        if (seatNumbers == null || seatNumbers.isEmpty()) {
-            throw new IllegalArgumentException("seatNumbers is required");
+    public void validateForPaymentExtension(List<SeatAssignments> seats) {
+        OffsetDateTime now = OffsetDateTime.now(Clock.systemUTC());
+
+        for (SeatAssignments seat : seats) {
+            if (seat.getStatus() == SeatStatus.BOOKED) {
+                throw new SeatNotAvailableException("Seat is already booked");
+            }
+
+            if (seat.getStatus() != SeatStatus.HOLD) {
+                throw new SeatNotAvailableException("Seat is not held (cannot extend)");
+            }
+
+            if (now.isAfter(seat.getLockExpiresAt())) {
+                throw new SeatHoldingExpiredException("Seat holding time expired. Please select seat again.");
+            }
+
         }
-        return seatNumbers.stream()
-                .map(s -> s.trim().toUpperCase(Locale.ROOT))
-                .collect(Collectors.toList());
     }
 
+    @Override
+    public void releaseLockedSeats(List<SeatAssignments> seats) {
+        if (seats.isEmpty()) {
+            return;
+        }
+
+        for (SeatAssignments seat : seats) {
+            if (seat.getStatus() == SeatStatus.HOLD) {
+                seat.setStatus(SeatStatus.AVAILABLE);
+                seat.setBookingId(null);
+                seat.setLockExpiresAt(null);
+                seat.setHoldStage(null);
+            }
+        }
+    }
 }

@@ -71,7 +71,7 @@ class InitiateBookingHandlerTest {
 
         SeatLockResult lockResult = new SeatLockResult(true, List.of(seatNumber), holdExpiresAt);
 
-        when(bookingCoreService.createDraft(command)).thenReturn(booking);
+        when(bookingCoreService.createPending(command)).thenReturn(booking);
         when(seatInventoryService.lockSeats(eq(flightId), anyList(), eq(bookingId), eq(HOLD_MINUTES)))
                 .thenReturn(lockResult);
 
@@ -125,7 +125,7 @@ class InitiateBookingHandlerTest {
 
         SeatLockResult lockResult = new SeatLockResult(true, List.of(seatNumber), holdExpiresAt);
 
-        when(bookingCoreService.createDraft(command)).thenReturn(booking);
+        when(bookingCoreService.createPending(command)).thenReturn(booking);
         when(seatInventoryService.lockSeats(eq(flightId), anyList(), eq(bookingId), eq(HOLD_MINUTES)))
                 .thenReturn(lockResult);
 
@@ -143,7 +143,7 @@ class InitiateBookingHandlerTest {
         assertInstanceOf(OptimisticLockingFailureException.class, ex.getCause());
 
         // Verify flow reached the save
-        verify(bookingCoreService).createDraft(command);
+        verify(bookingCoreService).createPending(command);
         verify(seatInventoryService).lockSeats(eq(flightId), anyList(), eq(bookingId), eq(HOLD_MINUTES));
         verify(bookingRepository).save(any(Booking.class));
     }

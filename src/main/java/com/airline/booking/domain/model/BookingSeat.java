@@ -19,10 +19,6 @@ public class BookingSeat extends BaseEntity {
 
     private UUID bookingId;
     private UUID passengerId;
-
-    private String seatNumber;
-
-    private FareClass fareClass;
+    private UUID seatTemplateId;
     private BigDecimal price;
-
 }

@@ -32,7 +32,6 @@ public class Booking extends BaseEntity {
     private BigDecimal totalAmount;
     private String currency;
     private BookingStatus status;
-    private OffsetDateTime holdExpiresAt;
 
     private OffsetDateTime bookingDate;
 

@@ -1,6 +1,7 @@
 package com.airline.flightmgmt.service;
 
-import com.airline.flightmgmt.domain.SeatInventory;
+import com.airline.flightmgmt.domain.HoldStage;
+import com.airline.flightmgmt.domain.SeatAssignments;
 import com.airline.shared.model.SeatLockResult;
 
 import java.time.Duration;
@@ -8,13 +9,17 @@ import java.util.List;
 import java.util.UUID;
 
 public interface ISeatInventoryService {
-    SeatLockResult lockSeats(List<SeatInventory> seats, UUID bookingId, Duration ttl);
+    SeatLockResult holdSeats(List<SeatAssignments> seats, Duration ttl);
 
-    void confirmLockedSeatsOrThrow(List<SeatInventory> seats, UUID bookingId);
+    SeatLockResult extendSeatExpiryForPayment(List<SeatAssignments> seats, Duration paymentWindow);
 
-    void releaseLockedSeatsOrThrow(List<SeatInventory> seats, UUID bookingId);
+    void confirmLockedSeatsOrThrow(List<SeatAssignments> seats);
 
-    void releaseBookedSeats(List<SeatInventory> seats);
+    void releaseBookedSeats(List<SeatAssignments> seats);
 
-    List<String> normalizeSeats(List<String> seatNumbers);
+    void validateAndPrepareSeatsForHolding(List<SeatAssignments> seatsToLock, HoldStage holdStage);
+
+    void validateForPaymentExtension(List<SeatAssignments> seats);
+
+    void releaseLockedSeats(List<SeatAssignments> seats);
 }

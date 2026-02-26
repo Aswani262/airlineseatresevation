@@ -39,12 +39,10 @@ public class BookingController {
         return bookSeatUseCase.initiateBooking(command);
     }
 
-
     @PostMapping("/{bookingId}/cancel")
     @ResponseStatus(HttpStatus.OK)
     public CancelBookingResult cancelBooking(@PathVariable UUID bookingId,
                                              @RequestBody CancelBookingCommand command) {
-        command.setBookingId(bookingId);
-        return cancelBookingUseCase.cancel(command);
+        return cancelBookingUseCase.cancel(bookingId,command);
     }
 }

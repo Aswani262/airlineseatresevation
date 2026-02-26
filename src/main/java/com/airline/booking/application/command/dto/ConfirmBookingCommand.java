@@ -11,6 +11,4 @@ import java.util.UUID;
 @Builder
 public class ConfirmBookingCommand {
     private UUID bookingId;
-    private UUID paymentId;
-    private String transactionId;
 }

@@ -33,19 +33,14 @@ public class BookingCoreService implements IBookingService {
     private final TicketingCoreService ticketingService;
 
     @Override
-    public Booking createDraft(InitiateBookingSeatCommand cmd) {
+    public Booking createPending(InitiateBookingSeatCommand cmd) {
 
-        //TODO:structural validation can be moved to a separate validator class if it grows more complex
-        // use notification pattern for that
         ErrorNotification notification =  validate(cmd);
 
         if(notification.hasErrors()){
             throw new StructuralException(notification);
         }
 
-        //We can move this to Aggregate factory if we want to keep service class thin
-        //And also if we want to reuse the booking creation logic in other places,
-        // but for simplicity keeping it here for now as its only used in one place and not too complex
         UUID bookingId = UUID.randomUUID();
         String reference = generateBookingRef8();
 
@@ -72,13 +67,11 @@ public class BookingCoreService implements IBookingService {
         for (var sel : cmd.getSeatSelections()) {
 
             UUID passengerId = passengerIds.get(sel.getPassengerIndex());
-            String normalizedSeat = normalizeSeat(sel.getSeatNumber());
 
             seats.add(BookingSeat.builder()
                     .bookingId(bookingId)
                     .passengerId(passengerId)
-                    .seatNumber(normalizedSeat)
-                    .fareClass(FareClass.valueOf(sel.getFareClass().trim().toUpperCase(Locale.ROOT)))
+                    .seatTemplateId(sel.getSeatTemplateId())
                     .price(sel.getPrice())
                     .build());
         }
@@ -93,10 +86,8 @@ public class BookingCoreService implements IBookingService {
                 .flightId(cmd.getFlightId())
                 .customerId(cmd.getCustomerId())
                 .totalAmount(totalAmount)
-                .currency(cmd.getCurrency().trim().toUpperCase(Locale.ROOT))
-                .status(BookingStatus.DRAFT)
+                .status(BookingStatus.PENDING)
                 .bookingDate(OffsetDateTime.now(Clock.systemUTC()))
-                .holdExpiresAt(null)
                 .passengers(passengers)
                 .seats(seats)
                 .tickets(new ArrayList<>())
@@ -109,7 +100,7 @@ public class BookingCoreService implements IBookingService {
         if (current == BookingStatus.CANCELLED || current == BookingStatus.EXPIRED) {
             return; // Idempotent no change
         }
-        if (current != BookingStatus.DRAFT && current != BookingStatus.CONFIRMED) {
+        if (current != BookingStatus.PENDING && current != BookingStatus.CONFIRMED) {
             throw new IllegalStateException("Cannot cancel in status: " + current);
         }
         booking.setStatus(BookingStatus.CANCELLED);
@@ -129,11 +120,8 @@ public class BookingCoreService implements IBookingService {
         if (current == BookingStatus.CONFIRMED) {
             return; // Idempotent no change
         }
-        if (current != BookingStatus.DRAFT) {
+        if (current != BookingStatus.PENDING) {
             throw new IllegaBookingStatus("Cannot confirm booking in status: " + current);
-        }
-        if (booking.getHoldExpiresAt() != null && now.isAfter(booking.getHoldExpiresAt())) {
-            throw new BookingHoldExpiredException();
         }
         booking.setStatus(BookingStatus.CONFIRMED);
         // Issue tickets
@@ -147,12 +135,6 @@ public class BookingCoreService implements IBookingService {
                         .build())
                 .collect(Collectors.toList());
         booking.setTickets(tickets);
-    }
-
-
-
-    private String normalizeSeat(String seat) {
-        return seat.trim().toUpperCase(Locale.ROOT);
     }
 
     private String generateBookingRef8() {
@@ -176,10 +158,6 @@ public class BookingCoreService implements IBookingService {
             notification.add("customer_id_required", "customerId", "customerId is required");
         }
 
-        if (cmd.getCurrency() == null || cmd.getCurrency().isBlank()) {
-            notification.add("currency_required", "currency", "currency is required");
-        }
-
         if (cmd.getPassengers() == null || cmd.getPassengers().isEmpty()) {
             notification.add("passengers_required", "passengers", "passengers is required");
         }
@@ -193,7 +171,7 @@ public class BookingCoreService implements IBookingService {
         if (cmd.getPassengers() != null) {
             int passengerCount = cmd.getPassengers().size();
 
-            Set<String> seenSeats = new HashSet<>();
+            Set<UUID> seenSeats = new HashSet<>();
 
             if (cmd.getSeatSelections() != null) {
                 for (var sel : cmd.getSeatSelections()) {
@@ -202,17 +180,16 @@ public class BookingCoreService implements IBookingService {
                             sel.getPassengerIndex() >= passengerCount) {
                         notification.add("invalid_passenger_index", "passengerIndex", "Invalid passengerIndex: " + sel.getPassengerIndex());
                     }
-                    if (sel.getSeatNumber() == null || sel.getSeatNumber().isBlank()) {
+                    if (sel.getSeatTemplateId() == null ) {
                         notification.add("seat_number_required", "seatNumber", "seatNumber is required");
                     }
                     if (sel.getPrice() == null || sel.getPrice().signum() < 0) {
                         notification.add("invalid_seat_price", "price", "Invalid seat price");
                     }
 
-                    if (sel.getSeatNumber() != null) {
-                        String normalized = normalizeSeat(sel.getSeatNumber());
-                        if (!seenSeats.add(normalized)) {
-                            notification.add("duplicate_seat", "seatNumber", "Duplicate seat in request: " + normalized);
+                    if (sel.getSeatTemplateId() != null) {
+                        if (!seenSeats.add(sel.getSeatTemplateId())) {
+                            notification.add("duplicate_seat", "seatNumber", "Duplicate seat in request: ");
                         }
                     }
                 }

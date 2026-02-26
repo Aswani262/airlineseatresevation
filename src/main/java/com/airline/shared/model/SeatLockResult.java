@@ -5,6 +5,5 @@ import java.util.List;
 
 public record SeatLockResult(
             boolean success,
-            List<String> seatNumbers,
             OffsetDateTime expiresAt
     ) {}
