@@ -1,6 +1,6 @@
 package com.airline.booking.repository;
 
-import com.airline.booking.domain.model.*;
+import com.airline.booking.domain.model.Booking;
 import org.springframework.data.repository.CrudRepository;
 import org.springframework.stereotype.Repository;
 

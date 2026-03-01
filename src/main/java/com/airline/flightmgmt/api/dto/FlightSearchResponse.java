@@ -13,5 +13,4 @@ public class FlightSearchResponse {
     private OffsetDateTime departureTime;
     private OffsetDateTime arrivalTime;
     private String status;
-    private BigDecimal basePrice;
 }

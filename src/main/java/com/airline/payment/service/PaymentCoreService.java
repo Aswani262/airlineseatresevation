@@ -38,7 +38,7 @@ public class PaymentCoreService implements IPaymentCoreService {
                 .amount(cmd.getAmount())
                 .currency(currency)
                 .paymentMethod(PaymentMethod.valueOf(method))
-                .status(PaymentStatus.INITIATED)
+                .status(PaymentStatus.PENDING)
                 .redirectUrl(redirectUrl)
                 .returnUrl(cmd.getReturnUrl())
                 .build();

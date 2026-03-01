@@ -8,7 +8,9 @@ public class BookingConfirmationFailedExpection extends BusinessException {
     private static final String CODE = "BOOKING_CONFIRMATION_FAILED";
     private static final String MESSAGE = "The booking process failed due to an unexpected error.";
 
-    public BookingConfirmationFailedExpection(String details) {
-        super(CODE, MESSAGE + " Details: " + details, HttpStatus.INTERNAL_SERVER_ERROR);
+    public BookingConfirmationFailedExpection(Throwable ex) {
+        super(CODE, ex.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR,ex);
     }
+
+
 }

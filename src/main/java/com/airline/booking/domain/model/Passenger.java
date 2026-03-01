@@ -6,7 +6,6 @@ import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.time.LocalDate;
-import java.time.OffsetDateTime;
 import java.util.UUID;
 // Passenger entity representing a passenger associated with a booking
 // This entity is should be treated as aggregate root because
@@ -30,4 +29,5 @@ public class Passenger extends BaseEntity {
     private String phone;
     private LocalDate dateOfBirth;
     private PassengerType passengerType;
+    private LocalDate bookingDate;
 }

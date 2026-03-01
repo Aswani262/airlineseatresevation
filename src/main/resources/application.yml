@@ -3,7 +3,7 @@ spring:
     name: airline-seat-booking
 
   datasource:
-    url: jdbc:postgresql://localhost:5432/airlinebooking?stringtype=unspecified
+    url: jdbc:postgresql://localhost:5432/airlinebooking?stringtype=unspecified&TimeZone=UTC
     username: postgres
     password: root
     driver-class-name: org.postgresql.Driver
@@ -41,5 +41,3 @@ logging:
   pattern:
     console: "%d{yyyy-MM-dd HH:mm:ss.SSS} %-5level [%X{traceId:-}] [%thread] %logger{36} - %msg%n"
 
-  elasticsearch:
-    uris: http://localhost:9200

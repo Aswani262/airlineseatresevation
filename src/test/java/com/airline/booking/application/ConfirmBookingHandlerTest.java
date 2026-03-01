@@ -1,281 +1,145 @@
 package com.airline.booking.application;
 
-import com.airline.booking.api.dto.ConfirmBookingResult;
+import com.airline.booking.api.dto.ConfirmedBookingResult;
 import com.airline.booking.application.command.ConfirmBookingHandler;
 import com.airline.booking.application.command.dto.ConfirmBookingCommand;
 import com.airline.booking.domain.model.Booking;
 import com.airline.booking.domain.model.BookingSeat;
 import com.airline.booking.domain.model.BookingStatus;
-import com.airline.booking.domain.model.Passenger;
-import com.airline.booking.exception.BookingNotFound;
-import com.airline.booking.exception.SeatNotFound;
-import com.airline.flightmgmt.domain.SeatAssignments;
-import com.airline.booking.domain.model.Ticket;
-import com.airline.booking.domain.model.TicketStatus;
+import com.airline.booking.exception.BookingConfirmationFailedExpection;
+import com.airline.booking.integration.SeatInventoryIntegrationService;
 import com.airline.booking.repository.IBookingCommandRepository;
-import com.airline.flightmgmt.repository.ISeatInventoryCommandRepository;
-import com.airline.booking.service.core.BookingCoreService;
-import com.airline.flightmgmt.service.ISeatInventoryService;
+import com.airline.booking.service.core.IBookingService;
+import com.airline.flightmgmt.exception.SeatHoldingExpiredException;
+import com.airline.shared.events.BookingConfirmationFailedEvent;
+import com.airline.shared.service.EventPublisher;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
-import org.springframework.dao.OptimisticLockingFailureException;
 
-import java.time.OffsetDateTime;
+import java.math.BigDecimal;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
-import static org.junit.jupiter.api.Assertions.*;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyIterable;
+import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class ConfirmBookingHandlerTest {
 
-    @InjectMocks
-    private ConfirmBookingHandler confirmBookingHandler;
+    @Mock
+    private IBookingService bookingCoreService;
 
     @Mock
     private IBookingCommandRepository bookingRepository;
 
     @Mock
-    private ISeatInventoryService seatInventoryService;
+    private SeatInventoryIntegrationService seatInventoryService;
 
     @Mock
-    private ISeatInventoryCommandRepository seatInventoryRepository;
+    private EventPublisher eventPublisher;
 
-    @Mock
-    private BookingCoreService bookingCoreService;
+    @InjectMocks
+    private ConfirmBookingHandler handler;
 
     private ConfirmBookingCommand command;
-    private Booking mockBooking;
-    private List<SeatAssignments> mockSeats;
+    private UUID bookingId;
+    private UUID flightId;
+    private UUID customerId;
 
     @BeforeEach
     void setUp() {
-        UUID bookingId = UUID.randomUUID();
+
+        bookingId = UUID.randomUUID();
+        flightId = UUID.randomUUID();
+        customerId = UUID.randomUUID();
+
         command = ConfirmBookingCommand.builder()
-                .bookingId(bookingId)
-                .paymentId(UUID.randomUUID())
-                .transactionId("TX123")
+                .flightId(flightId)
+                .customerId(customerId)
+                .passengers(List.of(ConfirmBookingCommand.Passenger.builder().build()))
+                .seatSelections(List.of(
+                        ConfirmBookingCommand.SeatSelection.builder()
+                                .seatTemplateId(UUID.randomUUID())
+                                .price(BigDecimal.TEN)
+                                .passengerIndex(0)
+                                .build()
+                ))
                 .build();
+    }
 
-        UUID passengerId1 = UUID.randomUUID();
-        UUID passengerId2 = UUID.randomUUID();
+    @Test
+    void testConfirmBooking_Success() {
 
-        mockBooking = Booking.builder()
+        Booking pendingBooking = Booking.builder()
                 .id(bookingId)
                 .bookingReference("REF123")
-                .flightId(UUID.randomUUID())
-                .status(BookingStatus.DRAFT)
-                .holdExpiresAt(OffsetDateTime.now().plusMinutes(5))
-                .passengers(List.of(
-                        Passenger.builder().id(passengerId1).build(),
-                        Passenger.builder().id(passengerId2).build()
-                ))
-                .seats(List.of(
-                        BookingSeat.builder().seatNumber("A1").build(),
-                        BookingSeat.builder().seatNumber("A2").build()
-                ))
-                .tickets(List.of())
+                .status(BookingStatus.PENDING)
+                .seats(List.of(BookingSeat.builder().seatTemplateId(UUID.randomUUID()).build()))
                 .build();
 
-        mockSeats = List.of(
-                SeatAssignments.builder()
-                        .id(UUID.randomUUID())
-                        .flightId(mockBooking.getFlightId())
-                        .seatNumber("A1")
-                        .build(),
-                SeatAssignments.builder()
-                        .id(UUID.randomUUID())
-                        .flightId(mockBooking.getFlightId())
-                        .seatNumber("A2")
-                        .build()
+        when(bookingCoreService.createPending(command)).thenReturn(pendingBooking);
+        doNothing().when(seatInventoryService).extendSeatExpiryTimeForPayment(any(UUID.class), anyList(), any(UUID.class), any(UUID.class));
+        when(bookingRepository.save(any(Booking.class))).thenReturn(pendingBooking);
+
+        ConfirmedBookingResult result = handler.confirmBooking(command);
+
+        assertThat(result.bookingId()).isEqualTo(bookingId);
+        assertThat(result.bookingReference()).isEqualTo("REF123");
+        assertThat(result.status()).isEqualTo("PENDING");
+
+        verify(bookingCoreService).createPending(command);
+        verify(seatInventoryService).extendSeatExpiryTimeForPayment(
+                eq(flightId),
+                anyList(),
+                eq(customerId),
+                eq(bookingId)
         );
+
+        verify(bookingRepository).save(pendingBooking);
+        verify(eventPublisher, never()).publish(any());
     }
 
     @Test
-    void bookingFinalize_fromDraft_confirmsAndReturnsResult() {
-        // Arrange
-        List<String> seatNumbers = List.of("A1", "A2");
-        List<String> normalizedSeats = List.of("A1", "A2");
+    void testConfirmBooking_ExtensionFailure_PublishesEventAndThrows() {
+        Booking pendingBooking = Booking.builder()
+                .id(bookingId)
+                .bookingReference("REF123")
+                .status(BookingStatus.PENDING)
+                .seats(List.of(BookingSeat.builder().seatTemplateId(UUID.randomUUID()).build()))
+                .build();
 
-        // Simulate confirm changing status and adding tickets
-        doAnswer(invocation -> {
-            mockBooking.setStatus(BookingStatus.CONFIRMED);
-            mockBooking.setTickets(List.of(
-                    Ticket.builder().passengerId(mockBooking.getPassengers().get(0).getId()).ticketNumber("TKT1").status(TicketStatus.ISSUED).build(),
-                    Ticket.builder().passengerId(mockBooking.getPassengers().get(1).getId()).ticketNumber("TKT2").status(TicketStatus.ISSUED).build()
-            ));
-            return null;
-        }).when(bookingCoreService).confirm(mockBooking);
+        when(bookingCoreService.createPending(command)).thenReturn(pendingBooking);
 
-        when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
-        when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
-        doNothing().when(seatInventoryService).confirmLockedSeatsOrThrow(mockSeats, mockBooking.getId());
-        when(seatInventoryRepository.saveAll(anyIterable())).thenReturn(mockSeats);
-        when(bookingRepository.save(any(Booking.class))).thenReturn(mockBooking);
+        doThrow(new SeatHoldingExpiredException("Hold expired"))
+                .when(seatInventoryService)
+                .extendSeatExpiryTimeForPayment(any(UUID.class), anyList(), any(UUID.class), any(UUID.class));
 
-        // Act
-        ConfirmBookingResult result = confirmBookingHandler.bookingFinalize(command);
+        assertThatThrownBy(() -> handler.confirmBooking(command))
+                .isInstanceOf(BookingConfirmationFailedExpection.class)
+                .hasCauseInstanceOf(SeatHoldingExpiredException.class);
 
-        // Assert
-        assertNotNull(result);
-        assertEquals(mockBooking.getId(), result.bookingId());
-        assertEquals(mockBooking.getBookingReference(), result.bookingReference());
-        assertEquals("CONFIRMED", result.status());
-        assertEquals(2, result.tickets().size());
-        assertEquals("TKT1", result.tickets().get(0).ticketNumber());
+        verify(bookingCoreService).createPending(command);
 
-        // Verify interactions
-        verify(bookingCoreService).confirm(mockBooking);
-        verify(seatInventoryService).normalizeSeats(seatNumbers);
-        verify(seatInventoryRepository).findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats);
-        verify(seatInventoryService).confirmLockedSeatsOrThrow(mockSeats, mockBooking.getId());
-        verify(seatInventoryRepository).saveAll(mockSeats);
-        verify(bookingRepository).save(mockBooking);
-    }
+        verify(seatInventoryService).extendSeatExpiryTimeForPayment(
+                eq(flightId),
+                anyList(),
+                eq(customerId),
+                eq(bookingId)
+        );
 
-    @Test
-    void bookingFinalize_alreadyConfirmed_returnsIdempotentResult() {
-        // Arrange
-        mockBooking.setStatus(BookingStatus.CONFIRMED);
-        mockBooking.setTickets(List.of(
-                Ticket.builder().passengerId(mockBooking.getPassengers().get(0).getId()).ticketNumber("TKT1").status(TicketStatus.ISSUED).build(),
-                Ticket.builder().passengerId(mockBooking.getPassengers().get(1).getId()).ticketNumber("TKT2").status(TicketStatus.ISSUED).build()
+        verify(bookingRepository, never()).save(any());
+
+        verify(eventPublisher).publish(argThat(event ->
+                event instanceof BookingConfirmationFailedEvent &&
+                        ((BookingConfirmationFailedEvent) event).getFlightId().equals(flightId) &&
+                        ((BookingConfirmationFailedEvent) event).getCustomerId().equals(customerId)
         ));
-
-        // Simulate confirm doing nothing (idempotent)
-        doNothing().when(bookingCoreService).confirm(mockBooking);
-
-        when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
-
-        // Act
-        ConfirmBookingResult result = confirmBookingHandler.bookingFinalize(command);
-
-        // Assert
-        assertEquals("CONFIRMED", result.status());
-        assertEquals(2, result.tickets().size());
-        assertEquals("TKT1", result.tickets().get(0).ticketNumber());
-
-        // Verify no further actions
-        verify(bookingCoreService).confirm(mockBooking);
-        verify(seatInventoryService, never()).normalizeSeats(any());
-        verify(seatInventoryRepository, never()).findByFlightIdAndTemplateIdIn(any(), any());
-        verify(seatInventoryService, never()).confirmLockedSeatsOrThrow(any(), any());
-        verify(seatInventoryRepository, never()).saveAll(any());
-        verify(bookingRepository, never()).save(any());
     }
 
-    @Test
-    void bookingFinalize_bookingNotFound_throwsIllegalStateException() {
-        // Arrange
-        when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.empty());
-
-        // Act & Assert
-         assertThrows(BookingNotFound.class, () -> confirmBookingHandler.bookingFinalize(command));
-
-        verify(bookingCoreService, never()).confirm(any());
-    }
-
-    @Test
-    void bookingFinalize_seatsNotFound_throwsIllegalStateException() {
-        // Arrange
-        List<String> seatNumbers = List.of("A1", "A2");
-        List<String> normalizedSeats = List.of("A1", "A2");
-        List<SeatAssignments> partialSeats = List.of(mockSeats.get(0)); // Mismatch
-
-        doAnswer(invocation -> {
-            mockBooking.setStatus(BookingStatus.CONFIRMED);
-            return null;
-        }).when(bookingCoreService).confirm(mockBooking);
-
-        when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
-        when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(partialSeats);
-
-        // Act & Assert
-        assertThrows(SeatNotFound.class, () -> confirmBookingHandler.bookingFinalize(command));
-
-        verify(seatInventoryService, never()).confirmLockedSeatsOrThrow(any(), any());
-        verify(seatInventoryRepository, never()).saveAll(any());
-        verify(bookingRepository, never()).save(any());
-    }
-
-    @Test
-    void bookingFinalize_confirmSeatsThrows_throwsException() {
-        // Arrange
-        List<String> seatNumbers = List.of("A1", "A2");
-        List<String> normalizedSeats = List.of("A1", "A2");
-
-        doAnswer(invocation -> {
-            mockBooking.setStatus(BookingStatus.CONFIRMED);
-            return null;
-        }).when(bookingCoreService).confirm(mockBooking);
-
-        when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
-        when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
-        doThrow(new IllegalStateException("Seats not locked")).when(seatInventoryService).confirmLockedSeatsOrThrow(mockSeats, mockBooking.getId());
-
-        // Act & Assert
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> confirmBookingHandler.bookingFinalize(command));
-        assertEquals("Seats not locked", exception.getMessage());
-
-        verify(seatInventoryRepository, never()).saveAll(any());
-        verify(bookingRepository, never()).save(any());
-    }
-
-    @Test
-    void bookingFinalize_optimisticLockingFailureOnSeats_throwsIllegalStateException() {
-        // Arrange
-        List<String> seatNumbers = List.of("A1", "A2");
-        List<String> normalizedSeats = List.of("A1", "A2");
-
-        doAnswer(invocation -> {
-            mockBooking.setStatus(BookingStatus.CONFIRMED);
-            return null;
-        }).when(bookingCoreService).confirm(mockBooking);
-
-        when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
-        when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
-        doNothing().when(seatInventoryService).confirmLockedSeatsOrThrow(mockSeats, mockBooking.getId());
-        when(seatInventoryRepository.saveAll(anyIterable())).thenThrow(OptimisticLockingFailureException.class);
-
-        // Act & Assert
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> confirmBookingHandler.bookingFinalize(command));
-        assertEquals("Seat confirmation failed due to concurrent modification; please retry", exception.getMessage());
-
-        verify(bookingRepository, never()).save(any());
-    }
-
-    @Test
-    void bookingFinalize_optimisticLockingFailureOnBooking_throwsIllegalStateException() {
-        // Arrange
-        List<String> seatNumbers = List.of("A1", "A2");
-        List<String> normalizedSeats = List.of("A1", "A2");
-
-        doAnswer(invocation -> {
-            mockBooking.setStatus(BookingStatus.CONFIRMED);
-            return null;
-        }).when(bookingCoreService).confirm(mockBooking);
-
-        when(bookingRepository.findById(command.getBookingId())).thenReturn(Optional.of(mockBooking));
-        when(seatInventoryService.normalizeSeats(seatNumbers)).thenReturn(normalizedSeats);
-        when(seatInventoryRepository.findByFlightIdAndTemplateIdIn(mockBooking.getFlightId(), normalizedSeats)).thenReturn(mockSeats);
-        doNothing().when(seatInventoryService).confirmLockedSeatsOrThrow(mockSeats, mockBooking.getId());
-        when(seatInventoryRepository.saveAll(anyIterable())).thenReturn(mockSeats);
-        when(bookingRepository.save(any(Booking.class))).thenThrow(OptimisticLockingFailureException.class);
-
-        // Act & Assert
-        IllegalStateException exception = assertThrows(IllegalStateException.class, () -> confirmBookingHandler.bookingFinalize(command));
-        assertEquals("Booking status changed concurrently; please retry", exception.getMessage());
-    }
 }

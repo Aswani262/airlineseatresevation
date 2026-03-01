@@ -1,26 +1,24 @@
 package com.airline.flightmgmt.application.command;
 
-import com.airline.flightmgmt.application.command.dto.CheckSeatHoldStatusCommand;
 import com.airline.flightmgmt.application.command.dto.HoldSeatCommand;
 import com.airline.flightmgmt.domain.HoldStage;
-import com.airline.flightmgmt.domain.SeatStatus;
 import com.airline.flightmgmt.domain.SeatAssignments;
-import com.airline.flightmgmt.exception.SeatAlreadyHeldException;
-import com.airline.flightmgmt.exception.SeatHoldingExpiredException;
-import com.airline.flightmgmt.exception.SeatHoldingFailedException;
-import com.airline.flightmgmt.exception.SeatNotAvailableException;
+import com.airline.flightmgmt.domain.SeatStatus;
+import com.airline.flightmgmt.repository.IFlightCacheRepository;
 import com.airline.flightmgmt.repository.ISeatInventoryCommandRepository;
-import com.airline.flightmgmt.service.ISeatInventoryService;
+import com.airline.flightmgmt.service.core.ExpiringSeatHoldManager;
+import com.airline.flightmgmt.service.core.ISeatInventoryService;
 import com.airline.shared.annotation.ApplicationService;
+import com.airline.shared.exception.ErrorNotification;
+import com.airline.shared.exception.StructuralException;
 import com.airline.shared.model.SeatLockResult;
 import lombok.RequiredArgsConstructor;
-import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Duration;
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.UUID;
 
 // This class is responsible for handling the command to reserve a seat on a flight.
@@ -37,6 +35,8 @@ public class HoldSeatHandler implements HoldSeatUseCase {
 
     private final ISeatInventoryCommandRepository seatInventoryRepository;
     private final ISeatInventoryService seatInventoryService;
+    private final ExpiringSeatHoldManager expiringSeatHoldManager;
+    private final IFlightCacheRepository flightCacheRepository;
 
     //Hold minute extend according to stages of booking process, for example,
     // we will extend hold time for payment stage than seat selection stage.
@@ -46,42 +46,53 @@ public class HoldSeatHandler implements HoldSeatUseCase {
     @Transactional
     public SeatLockResult holdSeat(HoldSeatCommand command) {
 
-        //TODO: Validate command
+        ErrorNotification errors = seatInventoryService.validate(command);
+        if(errors.hasErrors()){
+            throw new StructuralException(errors);
+        }
 
         UUID flightId = command.flightId();
+
+        //Get Flight Date from cache , to use in query
+        //Because of partition purning of flightDate
+        //Flight information is not continuosly updating we can do the caching
+
+        //Try to use flight date in approx every query to use partition as optimized way
+        // rather than scaning all the partition
+        LocalDate flightDate = flightCacheRepository.getFlight(flightId).getFlightDate();
+
         List<UUID> requestedSeatTemplateIds = command.seatTemplateId();
+        UUID customerId = command.customerId();
 
         List<SeatAssignments> seatsToHold = new ArrayList<>();
 
-        //If any of the requested seats do not exist in Seat Assignments , means that is AVAILABLE
+        //If any of the requested seats do not exist in seat assignments , means that is available
         for (UUID templateId : requestedSeatTemplateIds) {
             SeatAssignments seat = seatInventoryRepository
-                    .findByFlightIdAndSeatTemplateId(flightId, templateId)
+                    .findByFlightIdAndSeatTemplateIdAndFlightDate(flightId, templateId,flightDate)
                     .orElseGet(() -> {
                         SeatAssignments newSeat = new SeatAssignments();
+                        newSeat.setId(UUID.randomUUID());
                         newSeat.setFlightId(flightId);
                         newSeat.setHoldStage(HoldStage.SEAT_SELECTION);
                         newSeat.setSeatTemplateId(templateId);
                         newSeat.setStatus(SeatStatus.AVAILABLE);
+                        newSeat.setCustomerId(customerId);
+                        newSeat.setFlightDate(flightDate);
                         return newSeat;
                     });
-
             seatsToHold.add(seat);
         }
 
-        seatInventoryService.validateAndPrepareSeatsForHolding(seatsToHold,HoldStage.SEAT_SELECTION);
+        seatInventoryService.validateAndPrepareSeatsForHolding(seatsToHold,HoldStage.SEAT_SELECTION,customerId);
 
         SeatLockResult result = seatInventoryService.holdSeats(seatsToHold, Duration.ofMinutes(HOLD_MINUTES));
 
-        try {
-            seatInventoryRepository.saveAll(seatsToHold);
-        } catch (OptimisticLockingFailureException ex){
-            // This exception can occur if another transaction has modified the same seat records after we read them and before we saved them.
-            // In this case, we can treat it as a failure to hold the seats and return an appropriate response to the user.
-            // This exception qualified as retry able because that can be happend with any changes
-            // Give user an option to retry again if this exception occur
-            throw new SeatHoldingFailedException("Failed to hold seats due to concurrent modification. Please try again.");
-        }
+        seatInventoryRepository.saveAll(seatsToHold);
+
+        //Schedule in memory expiring , which fire event once seat holding expired , delete from DB means release the seat
+        expiringSeatHoldManager.holdSeat(flightId,customerId,HoldStage.SEAT_SELECTION, seatsToHold.get(0).getLockExpiresAt());
+
         return result;
     }
 

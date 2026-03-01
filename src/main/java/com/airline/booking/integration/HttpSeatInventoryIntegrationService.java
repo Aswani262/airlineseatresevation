@@ -1,13 +1,14 @@
 package com.airline.booking.integration;
 
-import com.airline.flightmgmt.api.dto.SeatBookedResult;
-import com.airline.flightmgmt.application.command.*;
+import com.airline.booking.exception.BookHoldSeatFailedExceptoion;
+import com.airline.booking.exception.SeatExpireExtendFailedExceptoion;
+import com.airline.flightmgmt.application.command.BookSeatUseCase;
+import com.airline.flightmgmt.application.command.ExtendExpiryTimeUseCase;
+import com.airline.flightmgmt.application.command.HoldSeatUseCase;
+import com.airline.flightmgmt.application.command.ReleaseBookedSeatUseCase;
 import com.airline.flightmgmt.application.command.dto.ConfirmSeatCommand;
 import com.airline.flightmgmt.application.command.dto.ExtendExpiryTimeCommand;
-import com.airline.flightmgmt.application.command.dto.ReleaseBookedSeatCommand;
-import com.airline.flightmgmt.domain.HoldStage;
 import com.airline.shared.annotation.IntegrationService;
-import com.airline.shared.model.SeatLockResult;
 import lombok.RequiredArgsConstructor;
 
 import java.util.List;
@@ -36,7 +37,7 @@ public class HttpSeatInventoryIntegrationService implements SeatInventoryIntegra
     // private final String inventoryServiceUrl;
      private final HoldSeatUseCase lockSeatUseCase;
      private final ExtendExpiryTimeUseCase extendExpiryTimeUseCase;
-     private final ConfirmSeatUseCase confirmSeatUseCase;
+     private final BookSeatUseCase confirmSeatUseCase;
      private final ReleaseBookedSeatUseCase releaseSeatUseCase;
 
 
@@ -51,12 +52,13 @@ public class HttpSeatInventoryIntegrationService implements SeatInventoryIntegra
 //    }
 
     @Override
-    public void extendSeatExpiryTimeForPayment(UUID flightId, List<UUID> seatTemplateIds) {
-         extendExpiryTimeUseCase.extendExpiryTime(new ExtendExpiryTimeCommand(flightId,seatTemplateIds, HoldStage.PAYMENT));
+    public void extendSeatExpiryTimeForPayment(UUID flightId, List<UUID> seatTemplateIds,UUID customerId , UUID bookingId) {
+        extendExpiryTimeUseCase.extendExpiryTime(new ExtendExpiryTimeCommand(flightId,seatTemplateIds,customerId,bookingId));
     }
 
+
     @Override
-    public void confirmSeat(UUID flightId, List<UUID> seatTemplateIds) {
-         confirmSeatUseCase.confirmSeat(new ConfirmSeatCommand(flightId,seatTemplateIds));
+    public void bookHoldSeat(UUID flightId, List<UUID> seatTemplateIds, UUID customerId, UUID bookingId) {
+        confirmSeatUseCase.bookHoldSeat(new ConfirmSeatCommand(flightId,seatTemplateIds,customerId,bookingId));
     }
 }

@@ -47,7 +47,7 @@ class PaymentCoreServiceTest {
         assertEquals(validCommand.getAmount(), payment.getAmount());
         assertEquals("USD", payment.getCurrency());
         assertEquals(PaymentMethod.CREDIT_CARD, payment.getPaymentMethod());
-        assertEquals(PaymentStatus.INITIATED, payment.getStatus());
+        assertEquals(PaymentStatus.PENDING, payment.getStatus());
         assertNull(payment.getTransactionId());
     }
 

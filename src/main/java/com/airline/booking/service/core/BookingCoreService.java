@@ -1,8 +1,7 @@
 package com.airline.booking.service.core;
 
-import com.airline.booking.application.command.dto.InitiateBookingSeatCommand;
+import com.airline.booking.application.command.dto.ConfirmBookingCommand;
 import com.airline.booking.domain.model.*;
-import com.airline.booking.exception.BookingHoldExpiredException;
 import com.airline.booking.exception.IllegaBookingStatus;
 import com.airline.shared.annotation.CoreService;
 import com.airline.shared.exception.ErrorNotification;
@@ -12,13 +11,9 @@ import lombok.RequiredArgsConstructor;
 import java.math.BigDecimal;
 import java.security.SecureRandom;
 import java.time.Clock;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
-import java.util.ArrayList;
-import java.util.HashSet;
-import java.util.List;
-import java.util.Locale;
-import java.util.Set;
-import java.util.UUID;
+import java.util.*;
 import java.util.stream.Collectors;
 
 //Core domain service that encapsulates the main booking logic(the logic which is going to part of booking aggregate), independent of infrastructure concerns
@@ -33,7 +28,7 @@ public class BookingCoreService implements IBookingService {
     private final TicketingCoreService ticketingService;
 
     @Override
-    public Booking createPending(InitiateBookingSeatCommand cmd) {
+    public Booking createPending(ConfirmBookingCommand cmd) {
 
         ErrorNotification notification =  validate(cmd);
 
@@ -43,6 +38,7 @@ public class BookingCoreService implements IBookingService {
 
         UUID bookingId = UUID.randomUUID();
         String reference = generateBookingRef8();
+        LocalDate bookingDate = LocalDate.now();
 
         List<Passenger> passengers = new ArrayList<>();
         List<UUID> passengerIds = new ArrayList<>();
@@ -56,6 +52,7 @@ public class BookingCoreService implements IBookingService {
                     .firstName(p.getFirstName().trim())
                     .lastName(p.getLastName().trim())
                     .email(p.getEmail())
+                    .bookingDate(bookingDate)
                     .phone(p.getPhone())
                     .dateOfBirth(null) // Can be added if needed for age-based pricing or other rules
                     .passengerType(PassengerType.valueOf(p.getPassengerType().trim().toUpperCase(Locale.ROOT)))
@@ -71,6 +68,7 @@ public class BookingCoreService implements IBookingService {
             seats.add(BookingSeat.builder()
                     .bookingId(bookingId)
                     .passengerId(passengerId)
+                    .bookingDate(bookingDate)
                     .seatTemplateId(sel.getSeatTemplateId())
                     .price(sel.getPrice())
                     .build());
@@ -87,9 +85,11 @@ public class BookingCoreService implements IBookingService {
                 .customerId(cmd.getCustomerId())
                 .totalAmount(totalAmount)
                 .status(BookingStatus.PENDING)
-                .bookingDate(OffsetDateTime.now(Clock.systemUTC()))
+                .bookingDateTime(OffsetDateTime.now(Clock.systemUTC()))
                 .passengers(passengers)
                 .seats(seats)
+                .currency("INR")
+                .bookingDate(bookingDate)
                 .tickets(new ArrayList<>())
                 .build();
     }
@@ -114,7 +114,7 @@ public class BookingCoreService implements IBookingService {
         }
     }
 
-    public void confirm(Booking booking) {
+    public void finalizeBooking(Booking booking) {
         OffsetDateTime now = OffsetDateTime.now(Clock.systemUTC());
         BookingStatus current = booking.getStatus();
         if (current == BookingStatus.CONFIRMED) {
@@ -131,6 +131,7 @@ public class BookingCoreService implements IBookingService {
                         .bookingId(booking.getId())
                         .passengerId(p.getId())
                         .status(TicketStatus.ISSUED)
+                        .bookingDate(booking.getBookingDate())
                         .issuedAt(now)
                         .build())
                 .collect(Collectors.toList());
@@ -143,7 +144,7 @@ public class BookingCoreService implements IBookingService {
         return sb.toString();
     }
 
-    public ErrorNotification validate(InitiateBookingSeatCommand cmd) {
+    public ErrorNotification validate(ConfirmBookingCommand cmd) {
         ErrorNotification notification = new ErrorNotification();
         if (cmd == null) {
             notification.add("command_required", "command", "command is required");

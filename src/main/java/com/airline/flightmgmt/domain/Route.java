@@ -3,8 +3,8 @@ package com.airline.flightmgmt.domain;
 import com.airline.shared.model.BaseEntity;
 import lombok.*;
 import org.springframework.data.annotation.Id;
+import org.springframework.data.annotation.Version;
 import org.springframework.data.relational.core.mapping.Table;
-
 
 import java.util.UUID;
 
@@ -26,4 +26,6 @@ public class Route extends BaseEntity {
     private Integer estimatedDurationMinutes;
     private Boolean isInternational;
 
+    @Version
+    private int version;
 }

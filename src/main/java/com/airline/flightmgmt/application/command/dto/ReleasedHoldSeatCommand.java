@@ -3,5 +3,5 @@ package com.airline.flightmgmt.application.command.dto;
 import java.util.List;
 import java.util.UUID;
 
-public record ReleasedHoldSeatCommand (UUID flightId, List<UUID> seatTemplateIds){
+public record ReleasedHoldSeatCommand (UUID flightId, List<UUID> seatTemplateIds,UUID customerId){
 }

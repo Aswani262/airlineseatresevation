@@ -1,11 +1,11 @@
 package com.airline.booking.api;
 
-import com.airline.booking.api.dto.BookSeatResult;
-import com.airline.booking.application.command.BookSeatUseCase;
-import com.airline.booking.application.command.CancelBookingUseCase;
-import com.airline.booking.application.command.dto.InitiateBookingSeatCommand;
+import com.airline.booking.api.dto.ConfirmedBookingResult;
+import com.airline.booking.application.command.CancelConfirmedBookingUseCase;
+import com.airline.booking.application.command.ConfirmBookingUseCase;
 import com.airline.booking.application.command.dto.CancelBookingCommand;
-import com.airline.booking.application.command.dto.CancelBookingResult;
+import com.airline.booking.application.command.dto.CancelConfirmedBookingResult;
+import com.airline.booking.application.command.dto.ConfirmBookingCommand;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;
@@ -17,8 +17,8 @@ import java.util.UUID;
 @RequiredArgsConstructor
 public class BookingController {
 
-    private final BookSeatUseCase bookSeatUseCase;
-    private final CancelBookingUseCase cancelBookingUseCase;
+    private final ConfirmBookingUseCase bookSeatUseCase;
+    private final CancelConfirmedBookingUseCase cancelBookingUseCase;
 
 
     //We should use different DTO/POJO on different layers,
@@ -35,14 +35,15 @@ public class BookingController {
 
     @PostMapping("/confirm")
     @ResponseStatus(HttpStatus.CREATED)
-    public BookSeatResult initiateBooking(@RequestBody InitiateBookingSeatCommand command) {
-        return bookSeatUseCase.initiateBooking(command);
+    public ConfirmedBookingResult confirmBooking(@RequestBody ConfirmBookingCommand command) {
+        return bookSeatUseCase.confirmBooking(command);
     }
 
-    @PostMapping("/{bookingId}/cancel")
+    @PutMapping("/{bookingId}/cancel")
     @ResponseStatus(HttpStatus.OK)
-    public CancelBookingResult cancelBooking(@PathVariable UUID bookingId,
-                                             @RequestBody CancelBookingCommand command) {
-        return cancelBookingUseCase.cancel(bookingId,command);
+    public CancelConfirmedBookingResult cancelBooking(@PathVariable UUID bookingId,
+                                                      @RequestBody CancelBookingCommand command) {
+
+        return cancelBookingUseCase.cancelConfirmedBooking(new CancelBookingCommand(bookingId,command.reason()));
     }
 }

@@ -7,7 +7,6 @@ import org.springframework.data.annotation.Version;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.math.BigDecimal;
-import java.time.OffsetDateTime;
 import java.util.Map;
 import java.util.UUID;
 

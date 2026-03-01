@@ -1,247 +1,291 @@
--- Enum types
-CREATE TYPE booking_status AS ENUM ('DRAFT', 'CONFIRMED', 'CANCELLED', 'EXPIRED');
 
+
+-- BOOKING MICROSERVICE
+
+-- ENUM TYPES
+
+CREATE TYPE booking_status AS ENUM ('PENDING', 'CONFIRMED', 'CANCELLED', 'EXPIRED', 'CHECKED_IN');
 CREATE TYPE passenger_type AS ENUM ('ADULT', 'CHILD', 'INFANT');
+CREATE TYPE ticket_status AS ENUM ('ISSUED', 'CANCELLED', 'REFUNDED');
 
-CREATE TYPE seat_status AS ENUM ('AVAILABLE', 'LOCKED', 'BOOKED');
+-- Bookings (Aggregate Root)
+CREATE TABLE bookings (
+    id                  UUID NOT NULL,
+    booking_reference   VARCHAR(50)  NOT NULL,
+    flight_id           UUID         NOT NULL,
+    customer_id         UUID         NOT NULL,
+    total_amount        NUMERIC(12,2) NOT NULL,
+    currency            CHAR(3)      NOT NULL,
+    status              booking_status NOT NULL DEFAULT 'PENDING',
+    booking_date_time   TIMESTAMPTZ  NOT NULL,
+    booking_date        DATE         NOT NULL,               -- Partition key
+    version             BIGINT       NOT NULL DEFAULT 0,
 
--- Assumed enum for FareClassCode/FareClass based on examples (ECONOMY, BUSINESS, FIRST)
-CREATE TYPE fare_class_type AS ENUM ('ECONOMY', 'BUSINESS', 'FIRST');
+    created_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+    updated_at          TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
 
--- Assumed enum for TicketStatus (common values for tickets)
-CREATE TYPE ticket_status AS ENUM ('ISSUED', 'CANCELLED', 'PENDING');
+    PRIMARY KEY (id,booking_date)
+) PARTITION BY RANGE (booking_date);
 
+CREATE TABLE bookings_2026_03 PARTITION OF bookings
+    FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+
+ALTER TABLE bookings ADD CONSTRAINT uk_bookings_booking_reference
+    UNIQUE (booking_reference, booking_date);
+
+CREATE INDEX idx_bookings_customer_id ON bookings (customer_id);
+CREATE INDEX idx_bookings_flight_id ON bookings (flight_id);
+CREATE INDEX idx_bookings_booking_date ON bookings (booking_date);
+
+-- Create the parent table with partitioning
+CREATE TABLE passengers (
+    id               UUID NOT NULL,
+    booking_id       UUID NOT NULL,
+    passenger_order  INTEGER NOT NULL,
+
+    first_name       VARCHAR(100) NOT NULL,
+    last_name        VARCHAR(100) NOT NULL,
+    email            VARCHAR(255) NOT NULL,
+    phone            VARCHAR(50),
+    date_of_birth    DATE NOT NULL,
+    passenger_type   passenger_type NOT NULL,
+
+    booking_date     DATE NOT NULL,  -- Denormalized partition key
+
+    created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    PRIMARY KEY (id, booking_date)
+) PARTITION BY RANGE (booking_date);
+
+CREATE TABLE passengers_2026_03 PARTITION OF passengers
+    FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+
+
+CREATE INDEX idx_passengers_booking_id ON passengers (booking_id);
+CREATE INDEX idx_passengers_booking_date ON passengers (booking_date);
+
+-- Create the parent table with partitioning
+CREATE TABLE bookings_seats (
+    booking_id        UUID NOT NULL,
+    seat_order        INTEGER NOT NULL,
+
+    passenger_id      UUID NOT NULL,
+    seat_template_id  UUID NOT NULL,
+    price             NUMERIC(12,2) NOT NULL,
+
+    booking_date      DATE NOT NULL,  -- Denormalized partition key
+
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    PRIMARY KEY (booking_id,booking_date)  -- Composite PK including partition key
+) PARTITION BY RANGE (booking_date);
+
+-- Create example monthly partitions
+CREATE TABLE bookings_seats_2026_03 PARTITION OF bookings_seats
+    FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+
+CREATE INDEX idx_bookings_seats_passenger_id ON bookings_seats (passenger_id);
+CREATE INDEX idx_bookings_seats_booking_date ON bookings_seats (booking_date);
+
+
+CREATE TABLE tickets (
+    booking_id     UUID NOT NULL,
+    ticket_order   INTEGER NOT NULL,
+
+    ticket_number  VARCHAR(50) NOT NULL,
+    passenger_id   UUID NOT NULL,
+    status         ticket_status NOT NULL DEFAULT 'ISSUED',
+    issued_at      TIMESTAMPTZ NOT NULL,
+
+    booking_date   DATE NOT NULL,  -- Denormalized partition key
+
+    created_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at     TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    PRIMARY KEY (booking_id, booking_date)  -- Composite PK including partition key
+) PARTITION BY RANGE (booking_date);
+
+-- Create example monthly partitions
+CREATE TABLE tickets_2026_03 PARTITION OF tickets
+    FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+
+CREATE INDEX idx_tickets_passenger_id ON tickets (passenger_id);
+CREATE INDEX idx_tickets_booking_date ON tickets (booking_date);
+
+ALTER TABLE tickets ADD CONSTRAINT uk_tickets_ticket_number
+    UNIQUE (ticket_number, booking_date);
+
+
+
+-- Flight Managment and Inventory Service
+
+-- =============================================
+-- ENUM TYPES
+-- =============================================
+CREATE TYPE fare_class AS ENUM ('ECONOMY', 'BUSINESS', 'FIRST');
 CREATE TYPE flight_status AS ENUM ('SCHEDULED', 'DELAYED', 'CANCELLED', 'DEPARTED', 'ARRIVED');
+CREATE TYPE hold_stage AS ENUM ('SEAT_SELECTION', 'PASSANGER_DETAILS', 'MEAL_SELECTION', 'PAYMENT');
+CREATE TYPE seat_status AS ENUM ('AVAILABLE', 'HOLD', 'BOOKED');
+CREATE TYPE seat_type AS ENUM ('WINDOW', 'AISLE', 'MIDDLE');
 
--- Enum for PaymentMethod (assumed common values since not provided)
-CREATE TYPE payment_method AS ENUM ('CREDIT_CARD', 'DEBIT_CARD', 'UPI', 'NET_BANKING', 'WALLET', 'PAYPAL');
 
--- Enum for PaymentStatus (assumed common values since not provided)
-CREATE TYPE payment_status AS ENUM ('INITIATED', 'PENDING', 'SUCCESSFUL', 'FAILED', 'REFUNDED', 'CANCELLED');
-
--- Tables
-
--- Flight Management Bounded Context
-CREATE TABLE fare_classes (
-    id UUID PRIMARY KEY,
-    code VARCHAR(50) NOT NULL,
-    name VARCHAR(100),
-    description TEXT,
-    baggage_allowance_kg INTEGER,
-    carry_on_allowed BOOLEAN,
-    refundable BOOLEAN,
-    changeable BOOLEAN,
-    change_fee_percentage NUMERIC(5, 2),
-    priority_boarding BOOLEAN,
-    meal_service BOOLEAN,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE,
-    version BIGINT NOT NULL DEFAULT 0
-);
-
-CREATE TABLE seat_inventory (
-    id UUID PRIMARY KEY,
-    flight_id UUID NOT NULL REFERENCES flights(id) ON DELETE CASCADE,
-    seat_number VARCHAR(10) NOT NULL,
-    fare_class fare_class_type NOT NULL,
-    status seat_status NOT NULL,
-    locked_by_booking_id UUID,
-    lock_expires_at TIMESTAMP WITH TIME ZONE,
-    price NUMERIC(10, 2) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE,
-    version BIGINT NOT NULL DEFAULT 0
-);
-
+-- Aircrafts
 CREATE TABLE aircrafts (
-    id UUID PRIMARY KEY,
-    registration_number VARCHAR(255) NOT NULL,
-    model VARCHAR(255) NOT NULL,
-    manufacturer VARCHAR(255) NOT NULL,
-    total_seats INTEGER NOT NULL,
-    seat_configuration JSONB NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE
+    id                   UUID PRIMARY KEY,
+    registration_number  VARCHAR(50) NOT NULL UNIQUE,
+    model                VARCHAR(100) NOT NULL,
+    manufacturer         VARCHAR(100) NOT NULL,
+    total_seats          INTEGER NOT NULL,
+    configuration        JSONB NOT NULL,  -- Map<String, Integer> for fare class to seats
+
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- Routes
+CREATE TABLE routes (
+    id                           UUID PRIMARY KEY,
+    origin_airport               VARCHAR(10) NOT NULL,
+    destination_airport          VARCHAR(10) NOT NULL,
+    distance_km                  INTEGER NOT NULL,
+    estimated_duration_minutes   INTEGER NOT NULL,
+    is_international             BOOLEAN NOT NULL DEFAULT FALSE,
+
+    created_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at                   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uk_route_origin_destination UNIQUE (origin_airport, destination_airport)
+);
+
+-- Seat Templates
+CREATE TABLE seat_templates (
+    seat_template_id  UUID PRIMARY KEY,
+    aircraft_id       UUID NOT NULL,
+    seat_number       VARCHAR(10) NOT NULL,
+    seat_type         seat_type NOT NULL,
+    fare_class        fare_class NOT NULL,
+    row_number        INTEGER NOT NULL,
+    is_blocked        BOOLEAN NOT NULL DEFAULT FALSE,
+    version           BIGINT    NOT NULL DEFAULT 0,
+    created_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at        TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    CONSTRAINT uk_seat_template_per_aircraft
+        UNIQUE (aircraft_id, seat_number)
 );
 
 CREATE TABLE flights (
-    id UUID PRIMARY KEY,
-    flight_number VARCHAR(255) NOT NULL,
-    aircraft_id UUID NOT NULL REFERENCES aircrafts(id),
-    route_id UUID NOT NULL REFERENCES routes(id),
-    departure_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    arrival_time TIMESTAMP WITH TIME ZONE NOT NULL,
-    status flight_status NOT NULL,
-    total_seats INTEGER NOT NULL,
-    available_seats INTEGER NOT NULL,
-    seat_configuration JSONB NOT NULL,
-    base_price NUMERIC(10, 2) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE
+    id                   UUID NOT NULL,
+    flight_number        VARCHAR(20) NOT NULL,
+    aircraft_id          UUID NOT NULL,
+    route_id             UUID NOT NULL,
+    departure_time       TIMESTAMPTZ NOT NULL,
+    arrival_time         TIMESTAMPTZ NOT NULL,
+    status               flight_status NOT NULL DEFAULT 'SCHEDULED',
+    flight_date          DATE NOT NULL,  -- Partition key
+    total_seats          INTEGER NOT NULL,
+    available_seats      INTEGER NOT NULL,
+
+    version              INTEGER NOT NULL DEFAULT 0,
+
+    created_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at           TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    PRIMARY KEY (id, flight_date)  -- Composite PK including partition key
+) PARTITION BY RANGE (flight_date);
+
+-- Create example monthly partitions
+CREATE TABLE flights_2026_03 PARTITION OF flights
+    FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+
+ALTER TABLE flights ADD CONSTRAINT uk_flights_flight_number
+    UNIQUE (flight_number, flight_date);
+
+CREATE INDEX idx_flights_aircraft_id ON flights (aircraft_id);
+CREATE INDEX idx_flights_route_id ON flights (route_id);
+CREATE INDEX idx_flights_flight_date ON flights (flight_date);
+
+CREATE TABLE seat_assignments (
+    id                 UUID NOT NULL,
+    flight_id          UUID NOT NULL,
+    seat_template_id   UUID NOT NULL,
+    status             seat_status,
+    booking_id         UUID,
+    customer_id        UUID,
+    lock_expires_at    TIMESTAMPTZ,
+    hold_stage         hold_stage,
+    flight_date        DATE NOT NULL,  -- Partition key
+
+    version            INTEGER NOT NULL DEFAULT 0,
+
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    PRIMARY KEY (id, flight_date)  -- Composite PK including partition key
+) PARTITION BY RANGE (flight_date);
+
+ALTER TABLE seat_assignments ADD CONSTRAINT uk_seat_assignment_per_flight_seat
+    UNIQUE (flight_id, seat_template_id, flight_date);
+
+CREATE TABLE seat_assignments_2026_03 PARTITION OF seat_assignments
+    FOR VALUES FROM ('2026-03-01') TO ('2026-04-01');
+
+CREATE INDEX idx_seat_assignments_flight_id ON seat_assignments (flight_id);
+CREATE INDEX idx_seat_assignments_seat_template_id ON seat_assignments (seat_template_id);
+CREATE INDEX idx_seat_assignments_flight_date ON seat_assignments (flight_date);
+CREATE INDEX idx_seat_assignments_status ON seat_assignments (status);
+CREATE INDEX idx_seat_assignments_lock_expires_at ON seat_assignments (lock_expires_at);
+
+
+-- Payment Microservice
+
+-- =============================================
+-- ENUM TYPES
+-- =============================================
+CREATE TYPE payment_method AS ENUM (
+    'CREDIT_CARD',
+    'DEBIT_CARD',
+    'UPI',
+    'NET_BANKING',
+    'WALLET'
 );
 
-
-CREATE TABLE routes (
-    id UUID PRIMARY KEY,
-    origin_airport VARCHAR(255) NOT NULL,
-    destination_airport VARCHAR(255) NOT NULL,
-    distance_km INTEGER NOT NULL,
-    estimated_duration_minutes INTEGER NOT NULL,
-    is_international BOOLEAN NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE
+CREATE TYPE payment_status AS ENUM (
+    'PENDING',
+    'SUCCESS',
+    'FAILED',
+    'REFUNDED',
+    'CANCELLED',
+    'EXPIRED'
 );
 
--- Booking Management Bounded Context
-CREATE TABLE bookings (
-    id UUID PRIMARY KEY,
-    booking_reference VARCHAR(20) NOT NULL,
-    flight_id UUID NOT NULL ,
-    customer_id UUID NOT NULL,
-    total_amount NUMERIC(10, 2) NOT NULL,
-    currency VARCHAR(3) NOT NULL,
-    status booking_status_type NOT NULL,
-    hold_expires_at TIMESTAMP WITH TIME ZONE,
-    booking_date TIMESTAMP WITH TIME ZONE NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE,
-    version BIGINT NOT NULL DEFAULT 0
-);
-
--- Passengers Table
-CREATE TABLE passengers (
-    id UUID PRIMARY KEY,
-    booking_id UUID NOT NULL,
-    passenger_order INTEGER NOT NULL,
-    first_name VARCHAR(255) NOT NULL,
-    last_name VARCHAR(255) NOT NULL,
-    email VARCHAR(255),
-    phone VARCHAR(50),
-    date_of_birth DATE,
-    passenger_type passenger_type_type NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE,
-    CONSTRAINT fk_passengers_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
-    UNIQUE (booking_id, passenger_order)
-);
-
--- Booking Seats Table
-CREATE TABLE bookings_seats (
-    booking_id UUID NOT NULL,
-    seat_order INTEGER NOT NULL,
-    passenger_id UUID,
-    seat_number VARCHAR(10) NOT NULL,
-    fare_class fare_class_type NOT NULL,
-    price NUMERIC(10, 2) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE,
-    CONSTRAINT fk_booking_seats_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
-    CONSTRAINT fk_booking_seats_passenger FOREIGN KEY (passenger_id) REFERENCES passengers(id) ON DELETE SET NULL,
-    PRIMARY KEY (booking_id, seat_order),
-    UNIQUE (booking_id, seat_number)
-);
-
--- Tickets Table
-CREATE TABLE tickets (
-    booking_id UUID NOT NULL,
-    ticket_order INTEGER NOT NULL,
-    ticket_number VARCHAR(20) NOT NULL,
-    passenger_id UUID,
-    status ticket_status_type NOT NULL,
-    issued_at TIMESTAMP WITH TIME ZONE,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE,
-    CONSTRAINT fk_tickets_booking FOREIGN KEY (booking_id) REFERENCES bookings(id) ON DELETE CASCADE,
-    CONSTRAINT fk_tickets_passenger FOREIGN KEY (passenger_id) REFERENCES passengers(id) ON DELETE SET NULL,
-    PRIMARY KEY (booking_id, ticket_order),
-    UNIQUE (ticket_number)  -- Assuming ticket numbers are globally unique
-);
-
-
--- Enum for FlightStatus
-
-
--- Payments Management Bounded Context
+-- =============================================
+--  PAYMENTS TABLE
+-- =============================================
 CREATE TABLE payments (
-    id UUID PRIMARY KEY,
-    booking_id UUID NOT NULL,
-    amount NUMERIC(10, 2) NOT NULL,
-    currency VARCHAR(3) NOT NULL,
-    payment_method payment_method NOT NULL,
-    status payment_status NOT NULL,
-    transaction_id VARCHAR(255),
-    gateway_response JSONB,
-    redirect_url VARCHAR(512),
-    return_url VARCHAR(512),
-    version INTEGER NOT NULL DEFAULT 0,
-    created_at TIMESTAMP WITH TIME ZONE,
-    updated_at TIMESTAMP WITH TIME ZONE
+    id                 UUID PRIMARY KEY,
+    booking_id         UUID NOT NULL,                    -- Reference to Booking microservice (no FK)
+    amount             NUMERIC(15,2) NOT NULL,
+    currency           CHAR(3) NOT NULL,                 -- ISO-4217 e.g. INR, USD
+    payment_method     payment_method NOT NULL,
+    status             payment_status NOT NULL DEFAULT 'PENDING',
+    transaction_id     VARCHAR(100),                     -- Gateway transaction ID (Razorpay, Stripe, etc.)
+    gateway_response   JSONB,                            -- Full raw response from payment gateway
+    redirect_url       VARCHAR(500),
+    return_url         VARCHAR(500),
+
+    version            INTEGER NOT NULL DEFAULT 0,
+
+    created_at         TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    updated_at         TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
----------------------------------
-
--- Indexes for fare_classes
-CREATE INDEX idx_fare_classes_code ON fare_classes(code);
-
--- Indexes for seat_inventory
-CREATE INDEX idx_seat_inventory_flight_id ON seat_inventory(flight_id);
-CREATE INDEX idx_seat_inventory_available ON seat_inventory(flight_id, fare_class, status);
-CREATE INDEX idx_seat_inventory_locked_by ON seat_inventory(locked_by_booking_id);
-
--- For schedule-based cleanup of expired locks, an index on lock_expires_at can help
-CREATE INDEX idx_seat_inventory_lock_expires_at ON seat_inventory(lock_expires_at);
-
--- Indexes for bookings
-CREATE INDEX idx_bookings_booking_reference ON bookings(booking_reference);
-
-CREATE INDEX idx_bookings_flight_id ON bookings(flight_id);
-
-CREATE INDEX idx_bookings_customer_id ON bookings(customer_id);
-
-CREATE INDEX idx_bookings_status ON bookings(status);
-
-CREATE INDEX idx_bookings_hold_expires_at ON bookings(hold_expires_at);
-
-CREATE INDEX idx_bookings_booking_date ON bookings(booking_date);
-
--- Indexes for passengers
-CREATE INDEX idx_passengers_booking_id ON passengers(booking_id);
-CREATE INDEX idx_passengers_email ON passengers(email);
-
--- Indexes for booking_seats
-CREATE INDEX idx_booking_seats_booking_id ON booking_seats(booking_id);
-CREATE INDEX idx_booking_seats_passenger_id ON booking_seats(passenger_id);
-CREATE INDEX idx_booking_seats_seat_number ON booking_seats(seat_number);
-
--- Indexes for tickets
-CREATE INDEX idx_tickets_ticket_number ON tickets(ticket_number);
-CREATE INDEX idx_tickets_booking_id ON tickets(booking_id);
-CREATE INDEX idx_tickets_passenger_id ON tickets(passenger_id);
-CREATE INDEX idx_tickets_status ON tickets(status);
-
--- Indexes for routes
-CREATE INDEX idx_routes_origin_airport ON routes(origin_airport);
-CREATE INDEX idx_routes_destination_airport ON routes(destination_airport);
-CREATE INDEX idx_routes_origin_destination ON routes(origin_airport, destination_airport);
-
--- Indexes for aircrafts
-CREATE INDEX idx_aircrafts_registration_number ON aircrafts(registration_number);
-CREATE INDEX idx_aircrafts_model ON aircrafts(model);
-
--- Indexes for flights
-CREATE INDEX idx_flights_flight_number ON flights(flight_number);
-CREATE INDEX idx_flights_aircraft_id ON flights(aircraft_id);
-CREATE INDEX idx_flights_route_id ON flights(route_id);
-CREATE INDEX idx_flights_departure_time ON flights(departure_time);
-CREATE INDEX idx_flights_arrival_time ON flights(arrival_time);
-CREATE INDEX idx_flights_status ON flights(status);
-CREATE INDEX idx_flights_search ON flights(route_id, departure_time, status);
-
--- Indexes for payments
-CREATE INDEX idx_payments_booking_id ON payments(booking_id);
-CREATE INDEX idx_payments_payment_status ON payments(payment_status);
+-- =============================================
+ --  INDEXES
+-- =============================================
+CREATE INDEX idx_payments_booking_id     ON payments(booking_id);
+CREATE INDEX idx_payments_status         ON payments(status);
 CREATE INDEX idx_payments_transaction_id ON payments(transaction_id);
-CREATE INDEX idx_payments_created_at ON payments(created_at);
-
-ALTER TABLE seat_inventory
-ADD CONSTRAINT unique_flight_seat UNIQUE (flight_id, seat_number);
+CREATE INDEX idx_payments_created_at     ON payments(created_at);

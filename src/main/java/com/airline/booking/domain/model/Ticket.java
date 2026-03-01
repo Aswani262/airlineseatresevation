@@ -2,9 +2,9 @@ package com.airline.booking.domain.model;
 
 import com.airline.shared.model.BaseEntity;
 import lombok.*;
-import org.springframework.data.annotation.Id;
 import org.springframework.data.relational.core.mapping.Table;
 
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 
@@ -21,4 +21,5 @@ public class Ticket extends BaseEntity {
     private UUID passengerId;
     private TicketStatus status;
     private OffsetDateTime issuedAt;
+    private LocalDate bookingDate;
 }

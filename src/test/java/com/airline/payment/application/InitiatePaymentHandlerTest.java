@@ -58,7 +58,7 @@ class InitiatePaymentHandlerTest {
                 .amount(command.getAmount())
                 .currency("USD")
                 .paymentMethod(PaymentMethod.CREDIT_CARD)
-                .status(PaymentStatus.INITIATED)
+                .status(PaymentStatus.PENDING)
                 .redirectUrl("https://demo-gateway/pay?paymentId=" + UUID.randomUUID())
                 .returnUrl(command.getReturnUrl())
                 .build();

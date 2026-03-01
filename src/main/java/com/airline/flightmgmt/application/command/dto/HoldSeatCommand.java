@@ -6,6 +6,7 @@ import java.util.UUID;
 
 public record HoldSeatCommand(
      UUID flightId,
-     List<UUID> seatTemplateId
+     List<UUID> seatTemplateId,
+     UUID customerId
      ) {
 }

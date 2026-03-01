@@ -1,6 +1,5 @@
 package com.airline.flightmgmt.application.command;
 
-import com.airline.flightmgmt.application.command.dto.CheckSeatHoldStatusCommand;
 import com.airline.flightmgmt.application.command.dto.HoldSeatCommand;
 import com.airline.shared.model.SeatLockResult;
 

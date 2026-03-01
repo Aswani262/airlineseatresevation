@@ -1,8 +1,8 @@
 package com.airline.payment.api;
 
-import com.airline.payment.application.dto.InitiatePaymentCommand;
 import com.airline.payment.application.InitiatePaymentResult;
 import com.airline.payment.application.InitiatePaymentUseCase;
+import com.airline.payment.application.dto.InitiatePaymentCommand;
 import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.*;

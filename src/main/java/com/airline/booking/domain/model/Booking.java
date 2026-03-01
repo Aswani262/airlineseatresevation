@@ -2,12 +2,14 @@ package com.airline.booking.domain.model;
 
 import com.airline.shared.model.BaseEntity;
 import lombok.*;
+import lombok.experimental.SuperBuilder;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.Version;
 import org.springframework.data.relational.core.mapping.MappedCollection;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -33,7 +35,10 @@ public class Booking extends BaseEntity {
     private String currency;
     private BookingStatus status;
 
-    private OffsetDateTime bookingDate;
+    private OffsetDateTime bookingDateTime;
+
+    //Use for partition
+    private LocalDate bookingDate;
 
     @Builder.Default
     @MappedCollection(idColumn = "booking_id",keyColumn = "passenger_order")

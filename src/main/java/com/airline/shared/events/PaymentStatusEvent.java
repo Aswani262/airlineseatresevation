@@ -9,7 +9,7 @@ import java.util.UUID;
 @Getter
 public final class PaymentStatusEvent extends IntegrationEvent {
 
-    public enum Status { SUCCESSFUL, FAILED, EXPIRED }
+    public enum Status { SUCCESS, FAILED, EXPIRED }
 
     private final UUID bookingId;
     private final Status status;

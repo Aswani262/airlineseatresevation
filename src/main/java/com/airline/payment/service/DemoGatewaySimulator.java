@@ -7,6 +7,7 @@ import com.airline.shared.events.PaymentStatusEvent;
 import com.airline.shared.service.EventPublisher;
 import org.springframework.dao.OptimisticLockingFailureException;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Random;
 import java.util.UUID;
@@ -25,20 +26,24 @@ public class DemoGatewaySimulator {
         this.eventPublisher = eventPublisher;
     }
 
+    @Transactional
     public void simulateGatewayCallback(UUID paymentId, UUID bookingId) {
         // DEMO: randomly succeed (80%) or fail (20%)
         boolean ok = random.nextInt(10) < 8;
 
         String txnId = ok ? ("TXN-DEMO-" + UUID.randomUUID()) : null;
-        String newStatus = ok ? "SUCCESSFUL" : "FAILED";
+
+        //Payment gateway send success or failed in any case , in case of timeout
+        //if payment gateway send any event , then still that will failed with reason timeout
+        String newStatus = ok ? "SUCCESS" : "FAILED";
         String failureReason = ok ? null : "Gateway failure";
 
         Payment payment = paymentRepository.findById(paymentId)
                 .orElseThrow(() -> new RuntimeException("Payment not found: " + paymentId));
 
         // Idempotency: If already in a final state (SUCCESS or FAILED), skip update and event publishing
-        if ("SUCCESSFUL".equals(payment.getStatus().name()) || "FAILED".equals(payment.getStatus().name())) {
-            // Optionally log: "Callback already processed for payment " + paymentId
+        if ("SUCCESS".equals(payment.getStatus().name()) || "FAILED".equals(payment.getStatus().name())) {
+
             return;
         }
 
@@ -56,7 +61,7 @@ public class DemoGatewaySimulator {
 
         // Publish event only if update succeeded
         PaymentStatusEvent event = ok
-                ? new PaymentStatusEvent(bookingId, PaymentStatusEvent.Status.SUCCESSFUL, null)
+                ? new PaymentStatusEvent(bookingId, PaymentStatusEvent.Status.SUCCESS, null)
                 : new PaymentStatusEvent(bookingId, PaymentStatusEvent.Status.FAILED, failureReason);
 
         eventPublisher.publish(event);

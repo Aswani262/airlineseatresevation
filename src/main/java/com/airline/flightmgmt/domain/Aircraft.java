@@ -2,6 +2,7 @@ package com.airline.flightmgmt.domain;
 
 import com.airline.shared.model.BaseEntity;
 import lombok.*;
+import org.springframework.data.annotation.Version;
 import org.springframework.data.relational.core.mapping.Table;
 
 import java.util.Map;
@@ -24,5 +25,8 @@ public class Aircraft extends BaseEntity {
     // Stored as JSONB in Postgres
     //Its a map of fare class code to number of seats in that class
     private Map<String, Integer> configuration;
+
+    @Version
+    int version ;
 
 }

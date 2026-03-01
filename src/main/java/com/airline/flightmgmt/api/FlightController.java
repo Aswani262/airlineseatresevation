@@ -1,12 +1,9 @@
 package com.airline.flightmgmt.api;
 
-import com.airline.flightmgmt.api.dto.FareClassResponse;
 import com.airline.flightmgmt.api.dto.FlightSearchResponse;
-import com.airline.flightmgmt.api.dto.SeatAvailabilitySummaryResponse;
-import com.airline.flightmgmt.api.dto.SeatResponse;
-import com.airline.flightmgmt.application.command.dto.HoldSeatCommand;
+import com.airline.flightmgmt.api.dto.SeatAvalibityResponse;
 import com.airline.flightmgmt.application.command.HoldSeatUseCase;
-import com.airline.flightmgmt.application.query.GetFareClassUseCase;
+import com.airline.flightmgmt.application.command.dto.HoldSeatCommand;
 import com.airline.flightmgmt.application.query.GetSeatAvailabilityUseCase;
 import com.airline.flightmgmt.application.query.SearchFlightsUseCase;
 import com.airline.shared.model.SeatLockResult;
@@ -26,7 +23,6 @@ public class FlightController {
 
     private final SearchFlightsUseCase searchFlightsUseCase;
     private final GetSeatAvailabilityUseCase getSeatAvailabilityUseCase;
-    private final GetFareClassUseCase getFareClassUseCase;
     private final HoldSeatUseCase holdSeatUseCase;
 
 
@@ -39,23 +35,13 @@ public class FlightController {
         return searchFlightsUseCase.search(origin, destination, date);
     }
 
-    @GetMapping("/{flightId}/seats/summary")
-    public SeatAvailabilitySummaryResponse seatSummary(@PathVariable UUID flightId) {
-        return getSeatAvailabilityUseCase.getSummary(flightId);
-    }
-
     @GetMapping("/{flightId}/seats")
-    public List<SeatResponse> seats(
+    public List<SeatAvalibityResponse> seats(
             @PathVariable UUID flightId,
             @RequestParam(required = false) String fareClass,   // ECONOMY/BUSINESS
             @RequestParam(required = false) String status       // AVAILABLE/LOCKED/BOOKED
     ) {
-        return getSeatAvailabilityUseCase.getSeats(flightId, fareClass, status);
-    }
-
-    @GetMapping("/fare-class/{code}")
-    public FareClassResponse getByCode(@PathVariable String code) {
-        return getFareClassUseCase.getByCode(code);
+        return getSeatAvailabilityUseCase.getSeatsAvailability(flightId, fareClass, status);
     }
 
     @PostMapping("/hold-seat")

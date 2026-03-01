@@ -23,11 +23,12 @@ public class FlightQueryJdbcRepository implements FlightQueryRepository {
     @Override
     public List<FlightSearchResponse> search(String origin, String destination, LocalDate date) {
         String sql = """
-            SELECT f.id, f.flight_number, f.departure_time, f.arrival_time, f.status, f.base_price
+            SELECT f.id, f.flight_number, f.departure_time, f.arrival_time, f.status
             FROM flights f
             JOIN routes r ON r.id = f.route_id
             WHERE r.origin_airport = :origin
               AND r.destination_airport = :destination
+              AND f.flight_date = :date
               AND f.departure_time >= :fromTs
               AND f.departure_time <  :toTs
             ORDER BY f.departure_time
@@ -39,6 +40,7 @@ public class FlightQueryJdbcRepository implements FlightQueryRepository {
         var params = new MapSqlParameterSource()
                 .addValue("origin", origin)
                 .addValue("destination", destination)
+                .addValue("date", date)
                 .addValue("fromTs", fromTs)
                 .addValue("toTs", toTs);
 
@@ -48,7 +50,6 @@ public class FlightQueryJdbcRepository implements FlightQueryRepository {
                 .departureTime(rs.getObject("departure_time", OffsetDateTime.class))
                 .arrivalTime(rs.getObject("arrival_time", OffsetDateTime.class))
                 .status(rs.getString("status"))
-                .basePrice(rs.getBigDecimal("base_price"))
                 .build()
         );
     }

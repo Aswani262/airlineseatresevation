@@ -5,6 +5,8 @@ import lombok.*;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.Version;
 import org.springframework.data.relational.core.mapping.Table;
+
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.util.UUID;
 //We can have a separate table for seat assignments to keep track of which seats are assigned to which bookings, and their status (e.g., reserved, occupied, available). This allows us to manage seat availability and assignments efficiently,
@@ -31,6 +33,7 @@ public class SeatAssignments extends BaseEntity {
     private UUID seatTemplateId;
     private SeatStatus status;
     private UUID bookingId;
+    private UUID customerId;
 
     //At the time of seat selection by the passenger , we are holding the seat for a certain period of time
     // then we extend the expire time when adding the passenger details
@@ -52,14 +55,12 @@ public class SeatAssignments extends BaseEntity {
 
     private HoldStage holdStage;
 
-    private UUID passengerId;
-
     //Only to use for partitioning and querying, not for any business logic
     //This is best suited for partitioning and query
     //because we are already using flight date for flight table for partitioning and these
     // two tables are closely related and often queried together, it makes sense to use the same partitioning key for both tables. This allows for efficient joins and queries that involve both tables,
     // as they will be located in the same partition based on the flight date.
-    private OffsetDateTime flightDate;
+    private LocalDate flightDate;
 
     @Version
     private Integer version;
