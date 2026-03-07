@@ -1,9 +1,10 @@
 package com.airline.booking.api;
 
 import com.airline.booking.api.dto.ConfirmedBookingResult;
-import com.airline.booking.application.command.CancelConfirmedBookingUseCase;
+import com.airline.booking.application.command.CancelBookingUseCase;
 import com.airline.booking.application.command.ConfirmBookingUseCase;
 import com.airline.booking.application.command.dto.CancelBookingCommand;
+import com.airline.booking.application.command.dto.CancelBookingResult;
 import com.airline.booking.application.command.dto.CancelConfirmedBookingResult;
 import com.airline.booking.application.command.dto.ConfirmBookingCommand;
 import lombok.RequiredArgsConstructor;
@@ -18,7 +19,7 @@ import java.util.UUID;
 public class BookingController {
 
     private final ConfirmBookingUseCase bookSeatUseCase;
-    private final CancelConfirmedBookingUseCase cancelBookingUseCase;
+    private final CancelBookingUseCase cancelBookingUseCase;
 
 
     //We should use different DTO/POJO on different layers,
@@ -41,9 +42,9 @@ public class BookingController {
 
     @PutMapping("/{bookingId}/cancel")
     @ResponseStatus(HttpStatus.OK)
-    public CancelConfirmedBookingResult cancelBooking(@PathVariable UUID bookingId,
-                                                      @RequestBody CancelBookingCommand command) {
+    public CancelBookingResult cancelBooking(@PathVariable UUID bookingId,
+                                             @RequestBody CancelBookingCommand command) {
 
-        return cancelBookingUseCase.cancelConfirmedBooking(new CancelBookingCommand(bookingId,command.reason()));
+        return cancelBookingUseCase.cancelBooking(new CancelBookingCommand(bookingId,command.reason()));
     }
 }

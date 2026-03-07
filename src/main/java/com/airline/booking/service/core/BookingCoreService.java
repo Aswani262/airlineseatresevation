@@ -1,7 +1,9 @@
 package com.airline.booking.service.core;
 
+import com.airline.booking.application.command.dto.CancelationReason;
 import com.airline.booking.application.command.dto.ConfirmBookingCommand;
 import com.airline.booking.domain.model.*;
+import com.airline.booking.exception.BookingCancelationFailedExcpetion;
 import com.airline.booking.exception.IllegaBookingStatus;
 import com.airline.shared.annotation.CoreService;
 import com.airline.shared.exception.ErrorNotification;
@@ -85,6 +87,7 @@ public class BookingCoreService implements IBookingService {
                 .customerId(cmd.getCustomerId())
                 .totalAmount(totalAmount)
                 .status(BookingStatus.PENDING)
+                .bookingStage(BookingStage.PAYMENT_INITIATED)
                 .bookingDateTime(OffsetDateTime.now(Clock.systemUTC()))
                 .passengers(passengers)
                 .seats(seats)
@@ -94,16 +97,28 @@ public class BookingCoreService implements IBookingService {
                 .build();
     }
 
+    //You can cancel Pending and Confirmed Booking (initiate refund)
     @Override
-    public void cancel(Booking booking) {
+    public void cancel(Booking booking, CancelationReason reason) {
         BookingStatus current = booking.getStatus();
-        if (current == BookingStatus.CANCELLED || current == BookingStatus.EXPIRED) {
+        if (current == BookingStatus.CANCELLED || current == BookingStatus.FAILED) {
             return; // Idempotent no change
         }
         if (current != BookingStatus.PENDING && current != BookingStatus.CONFIRMED) {
-            throw new IllegalStateException("Cannot cancel in status: " + current);
+            throw new IllegaBookingStatus("Cannot cancel in status: " + current);
         }
-        booking.setStatus(BookingStatus.CANCELLED);
+
+        if(reason == CancelationReason.BY_USER){
+            booking.setStatus(BookingStatus.CANCELLED);
+            booking.setBookingStage(BookingStage.USER_CANCELLED);
+        } else if(reason == CancelationReason.SEAT_HOLDING_TIME_OUT){
+            booking.setStatus(BookingStatus.FAILED);
+            booking.setBookingStage(BookingStage.PAYMENT_EXPIRED);
+        }else if(reason == CancelationReason.PAYMENT_GATEWAY){
+            booking.setStatus(BookingStatus.FAILED);
+            booking.setBookingStage(BookingStage.PAYMENT_FAILED);
+        }
+
         // Cancel tickets if CONFIRMED
         if (current == BookingStatus.CONFIRMED) {
             booking.getTickets().forEach(ticket -> {
@@ -124,6 +139,7 @@ public class BookingCoreService implements IBookingService {
             throw new IllegaBookingStatus("Cannot confirm booking in status: " + current);
         }
         booking.setStatus(BookingStatus.CONFIRMED);
+        booking.setBookingStage(BookingStage.PAYMENT_SUCCESS);
         // Issue tickets
         List<Ticket> tickets = booking.getPassengers().stream()
                 .map(p -> Ticket.builder()

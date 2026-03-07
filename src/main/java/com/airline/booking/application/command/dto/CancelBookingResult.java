@@ -9,7 +9,7 @@ import java.util.UUID;
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
-public class CancelPendingBookingResult {
+public class CancelBookingResult {
     private UUID bookingId;
     private String status;
 }

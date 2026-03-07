@@ -5,7 +5,7 @@ import com.airline.flightmgmt.domain.SeatAssignments;
 import com.airline.flightmgmt.domain.SeatStatus;
 import com.airline.flightmgmt.repository.ISeatInventoryCommandRepository;
 import com.airline.shared.annotation.UtilityService;
-import com.airline.shared.events.PaymentTimeExpired;
+import com.airline.shared.events.SeatHoldingTimeExpired;
 import com.airline.shared.service.EventPublisher;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -42,7 +42,7 @@ public class DefaultCleanExpiredHoldSeatJob implements CleanExpiredHoldSeatJob {
             try {
                 // If in PAYMENT stage, publish timeout event
                 if (seat.getHoldStage() == HoldStage.PAYMENT && seat.getBookingId() != null) {
-                    eventPublisher.publish(new PaymentTimeExpired(seat.getBookingId()));
+                    eventPublisher.publish(new SeatHoldingTimeExpired(seat.getBookingId(),HoldStage.PAYMENT));
                 }
             } catch (Exception e) {
                 log.error("Failed to publish PaymentTimeExpired for bookingId: {}", seat.getBookingId(), e);

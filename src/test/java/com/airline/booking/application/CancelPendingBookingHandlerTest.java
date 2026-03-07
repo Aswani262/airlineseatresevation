@@ -1,12 +1,10 @@
 package com.airline.booking.application;
 
-import com.airline.booking.application.command.CancelPendingBookingHandler;
+import com.airline.booking.application.command.CancelBookingHandler;
 import com.airline.booking.application.command.dto.CancelPendingBookingCommand;
-import com.airline.booking.application.command.dto.CancelPendingBookingResult;
+import com.airline.booking.application.command.dto.CancelBookingResult;
 import com.airline.booking.domain.model.Booking;
 import com.airline.booking.domain.model.BookingStatus;
-import com.airline.booking.exception.BookingCancelationFailedExcpetion;
-import com.airline.booking.exception.BookingNotFound;
 import com.airline.booking.repository.IBookingCommandRepository;
 import com.airline.booking.service.core.IBookingService;
 import org.junit.jupiter.api.BeforeEach;
@@ -34,7 +32,7 @@ class CancelPendingBookingHandlerTest {
     private IBookingService bookingService;
 
     @InjectMocks
-    private CancelPendingBookingHandler handler;
+    private CancelBookingHandler handler;
 
     private UUID bookingId;
     private CancelPendingBookingCommand command;
@@ -55,7 +53,7 @@ class CancelPendingBookingHandlerTest {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
         when(bookingRepository.save(any(Booking.class))).thenReturn(booking);
 
-        CancelPendingBookingResult result = handler.cancelPendingBooking(command);
+        CancelBookingResult result = handler.cancelBooking(command);
 
         assertThat(result.getBookingId()).isEqualTo(bookingId);
         assertThat(result.getStatus()).isEqualTo("CANCELLED");
@@ -74,7 +72,7 @@ class CancelPendingBookingHandlerTest {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
 
         // Act
-        CancelPendingBookingResult result = handler.cancelPendingBooking(command);
+        CancelBookingResult result = handler.cancelBooking(command);
 
         // Assert
         assertThat(result.getBookingId()).isEqualTo(bookingId);
@@ -95,7 +93,7 @@ class CancelPendingBookingHandlerTest {
         when(bookingRepository.findById(bookingId)).thenReturn(Optional.of(booking));
         doThrow(new RuntimeException("Cancel failure")).when(bookingService).cancel(booking);
 
-        assertThatThrownBy(() -> handler.cancelPendingBooking(command))
+        assertThatThrownBy(() -> handler.cancelBooking(command))
                 .isInstanceOf(RuntimeException.class)
                 .hasMessage("Cancel failure");
         verify(bookingRepository, never()).save(any());

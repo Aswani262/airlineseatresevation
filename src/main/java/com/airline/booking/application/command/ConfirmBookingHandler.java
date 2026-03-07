@@ -12,11 +12,17 @@ import com.airline.flightmgmt.exception.SeatHoldingExpiredException;
 import com.airline.shared.annotation.ApplicationService;
 import com.airline.shared.events.BookingConfirmationFailedEvent;
 import com.airline.shared.service.EventPublisher;
+import io.github.resilience4j.retry.annotation.Retry;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeoutException;
 
 @ApplicationService
 @RequiredArgsConstructor
@@ -29,6 +35,11 @@ public class ConfirmBookingHandler implements ConfirmBookingUseCase {
 
     @Override
     @Transactional
+    @Retryable(
+            retryFor = {OptimisticLockingFailureException.class, TimeoutException.class, SocketTimeoutException.class},
+            maxAttempts = 4,
+            backoff = @Backoff(delay = 800)
+    )
     public ConfirmedBookingResult confirmBooking(ConfirmBookingCommand command) {
 
         Booking booking = bookingCoreService.createPending(command);
@@ -68,7 +79,7 @@ public class ConfirmBookingHandler implements ConfirmBookingUseCase {
                         command.getCustomerId()
                 ));
 
-            throw new BookingConfirmationFailedExpection(ex);
+            throw  ex;
         }
     }
 }

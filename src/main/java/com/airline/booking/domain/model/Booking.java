@@ -2,7 +2,6 @@ package com.airline.booking.domain.model;
 
 import com.airline.shared.model.BaseEntity;
 import lombok.*;
-import lombok.experimental.SuperBuilder;
 import org.springframework.data.annotation.Id;
 import org.springframework.data.annotation.Version;
 import org.springframework.data.relational.core.mapping.MappedCollection;
@@ -20,7 +19,7 @@ import java.util.UUID;
 @NoArgsConstructor
 @AllArgsConstructor
 @Builder
-@Table ("bookings")
+@Table("bookings")
 public class Booking extends BaseEntity {
 
     @Id
@@ -34,6 +33,8 @@ public class Booking extends BaseEntity {
     private BigDecimal totalAmount;
     private String currency;
     private BookingStatus status;
+    private BookingStage bookingStage;
+
 
     private OffsetDateTime bookingDateTime;
 
@@ -41,15 +42,15 @@ public class Booking extends BaseEntity {
     private LocalDate bookingDate;
 
     @Builder.Default
-    @MappedCollection(idColumn = "booking_id",keyColumn = "passenger_order")
+    @MappedCollection(idColumn = "booking_id", keyColumn = "passenger_order")
     private List<Passenger> passengers = new ArrayList<>();
 
     @Builder.Default
-    @MappedCollection(idColumn = "booking_id",keyColumn = "seat_order")
+    @MappedCollection(idColumn = "booking_id", keyColumn = "seat_order")
     private List<BookingSeat> seats = new ArrayList<>();
 
     @Builder.Default
-    @MappedCollection(idColumn = "booking_id",keyColumn = "ticket_order")
+    @MappedCollection(idColumn = "booking_id", keyColumn = "ticket_order")
     private List<Ticket> tickets = new ArrayList<>();
 
     @Version

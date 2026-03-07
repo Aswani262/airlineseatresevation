@@ -29,7 +29,7 @@ public class DefaultSeatInventoryEventHandler implements SeatInventoryEventHandl
     //Released the seat which in Hold stage of Payment
     @Override
     public void handle(BookingFinalizationFailedEvent event) {
-        releaseBookedSeatUseCase.releaseBookedSeats(new ReleaseBookedSeatCommand(event.getFlightId(),event.getSeatTemplateIds(),event.getCustomerId(),event.getBookingId()));
+        releaseBookedSeatUseCase.releaseBookedSeats(new ReleaseBookedSeatCommand(event.getFlightId(),null,null,event.getBookingId()));
     }
 
     @Override

@@ -1,22 +1,56 @@
 package com.airline.payment.service;
 
 import com.airline.payment.application.dto.InitiatePaymentCommand;
-import com.airline.payment.domain.Payment;
-import com.airline.payment.domain.PaymentMethod;
-import com.airline.payment.domain.PaymentStatus;
+import com.airline.payment.domain.*;
+import com.airline.payment.repository.IPaymentCommandRepository;
 import com.airline.shared.annotation.CoreService;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.OffsetDateTime;
-import java.util.Locale;
-import java.util.UUID;
+import java.util.*;
 
+@Slf4j
 @CoreService
 @RequiredArgsConstructor
 public class PaymentCoreService implements IPaymentCoreService {
 
+    private final IPaymentCommandRepository paymentRepository;
+
+    /**
+     * Idempotent payment creation
+     * - SUCCESS or PENDING → return existing
+     * - FAILED → create new pending payment
+     * - No record → create new
+     */
+    public Payment createOrReturnExistingPayment(InitiatePaymentCommand cmd) {
+        validate(cmd);
+
+        // Step 1: Look for SUCCESS or PENDING payment only
+        Optional<Payment> activePayment = paymentRepository
+                .findActivePayment(cmd.getBookingId(), List.of(PaymentStatus.SUCCESS, PaymentStatus.PENDING));
+
+        if (activePayment.isPresent()) {
+            Payment payment = activePayment.get();
+            log.info("Idempotent: Returning existing payment (status={}) for bookingId={}", 
+                    payment.getStatus(), cmd.getBookingId());
+            return payment;
+        }
+
+        // Step 2: If only FAILED payment exists → create new for retry
+        Optional<Payment> failedPayment = paymentRepository
+                .findByBookingIdAndStatus(cmd.getBookingId(), PaymentStatus.FAILED);
+
+        if (failedPayment.isPresent()) {
+            log.info("Previous payment FAILED. Creating new pending payment for retry. bookingId={}", cmd.getBookingId());
+        }
+
+        // Step 3: Create new payment
+        log.info("Creating new payment for bookingId={}", cmd.getBookingId());
+        return createPendingPayment(cmd);
+    }
 
     @Override
     public Payment createPendingPayment(InitiatePaymentCommand cmd) {
@@ -49,4 +83,24 @@ public class PaymentCoreService implements IPaymentCoreService {
             throw new IllegalArgumentException("amount must be > 0");
         }
     }
+
+    public Payment createRefundPayment(Payment originalPayment, String transactionId, String gatewayRawPayload) {
+
+        return Payment.builder()
+                .id(UUID.randomUUID())
+                .bookingId(originalPayment.getBookingId())           // Same bookingId
+                .amount(originalPayment.getAmount())
+                .currency(originalPayment.getCurrency())
+                .paymentMethod(originalPayment.getPaymentMethod())
+                .status(PaymentStatus.PENDING)                       // Start as PENDING for refund processing
+                .tranascationFor(TranascationFor.REFUND)
+                .reason(Reason.PAYMENT_TIME_OUT)
+                .transactionId(transactionId)
+                .gatewayResponse(Map.of(
+                        "originalPaymentId", originalPayment.getId().toString(),
+                        "note", "Late SUCCESS after timeout expiry"
+                ))
+                .build();
+    }
+
 }

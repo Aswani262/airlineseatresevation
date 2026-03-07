@@ -5,6 +5,6 @@ import java.util.UUID;
 
 public record CancelBookingCommand(
      UUID bookingId,
-     String reason
+     CancelationReason reason
     ){
 }

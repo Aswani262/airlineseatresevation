@@ -19,8 +19,12 @@ public class InitiatePaymentHandler implements InitiatePaymentUseCase {
     @Transactional
     public InitiatePaymentResult initiate(InitiatePaymentCommand command) {
 
-        Payment payment = paymentCoreService.createPendingPayment(command);
-        paymentRepository.save(payment);
+        Payment payment = paymentCoreService.createOrReturnExistingPayment(command);
+
+        // Save only if it's a new payment (idempotent cases already exist in DB)
+        if (payment.getId() == null || paymentRepository.findById(payment.getId()).isEmpty()) {
+            paymentRepository.save(payment);
+        }
 
         return new InitiatePaymentResult(
                 payment.getId(),

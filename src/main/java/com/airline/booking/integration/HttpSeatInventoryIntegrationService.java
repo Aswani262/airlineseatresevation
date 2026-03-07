@@ -10,9 +10,14 @@ import com.airline.flightmgmt.application.command.dto.ConfirmSeatCommand;
 import com.airline.flightmgmt.application.command.dto.ExtendExpiryTimeCommand;
 import com.airline.shared.annotation.IntegrationService;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 
+import java.net.SocketTimeoutException;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeoutException;
 // This class is responsible for integrating with the seat inventory service via HTTP calls in case of microservices architecture.
 // It implements the SeatInventoryIntegrationService interface and uses an HTTP client (e.g., RestTemplate, WebClient)
 // to communicate with the inventory service.The lockSeats method will make an HTTP
@@ -52,12 +57,22 @@ public class HttpSeatInventoryIntegrationService implements SeatInventoryIntegra
 //    }
 
     @Override
+    @Retryable(
+            retryFor = {OptimisticLockingFailureException.class, TimeoutException.class, SocketTimeoutException.class},
+            maxAttempts = 4,
+            backoff = @Backoff(delay = 800)
+    )
     public void extendSeatExpiryTimeForPayment(UUID flightId, List<UUID> seatTemplateIds,UUID customerId , UUID bookingId) {
         extendExpiryTimeUseCase.extendExpiryTime(new ExtendExpiryTimeCommand(flightId,seatTemplateIds,customerId,bookingId));
     }
 
 
     @Override
+    @Retryable(
+            retryFor = {OptimisticLockingFailureException.class, TimeoutException.class, SocketTimeoutException.class},
+            maxAttempts = 4,
+            backoff = @Backoff(delay = 800)
+    )
     public void bookHoldSeat(UUID flightId, List<UUID> seatTemplateIds, UUID customerId, UUID bookingId) {
         confirmSeatUseCase.bookHoldSeat(new ConfirmSeatCommand(flightId,seatTemplateIds,customerId,bookingId));
     }

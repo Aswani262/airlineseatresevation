@@ -3,7 +3,7 @@ package com.airline.flightmgmt.service.core;
 import com.airline.flightmgmt.domain.*;
 import com.airline.flightmgmt.repository.IFlightCacheRepository;
 import com.airline.flightmgmt.repository.ISeatInventoryCommandRepository;
-import com.airline.shared.events.PaymentTimeExpired;
+import com.airline.shared.events.SeatHoldingTimeExpired;
 import com.airline.shared.service.EventPublisher;
 import jakarta.annotation.PostConstruct;
 import lombok.RequiredArgsConstructor;
@@ -81,9 +81,11 @@ public class ExpiringSeatHoldManager {
 
             seatRepository.deleteAll(seats);
 
-            //Payment time out expired
-            if(holdInfo.getHoldStage() == HoldStage.PAYMENT){
-                eventPublisher.publish(new PaymentTimeExpired(holdInfo.getBookingId()));
+            if(HoldStage.PAYMENT == holdInfo.getHoldStage()){
+                //Holding seat expired at stage payment , if it is at stage payment means , there is some booking in pending status
+                //we need to cancel that booking
+                //If not in payment stage mean only seat is hold , booking is not created yet - No need to fire event
+                eventPublisher.publish(new SeatHoldingTimeExpired(holdInfo.getBookingId(),holdInfo.getHoldStage()));
             }
 
             log.info("Seat successfully released via ExpiringMap listener: {}", key);

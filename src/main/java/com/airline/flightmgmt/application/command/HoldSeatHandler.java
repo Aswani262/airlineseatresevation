@@ -13,13 +13,18 @@ import com.airline.shared.exception.ErrorNotification;
 import com.airline.shared.exception.StructuralException;
 import com.airline.shared.model.SeatLockResult;
 import lombok.RequiredArgsConstructor;
+import org.springframework.dao.OptimisticLockingFailureException;
+import org.springframework.retry.annotation.Backoff;
+import org.springframework.retry.annotation.Retryable;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.net.SocketTimeoutException;
 import java.time.Duration;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.TimeoutException;
 
 // This class is responsible for handling the command to reserve a seat on a flight.
 // It will interact with the domain layer to perform the necessary operations to reserve a seat,
@@ -44,6 +49,11 @@ public class HoldSeatHandler implements HoldSeatUseCase {
 
     @Override
     @Transactional
+    @Retryable(
+            retryFor = {OptimisticLockingFailureException.class, TimeoutException.class, SocketTimeoutException.class},
+            maxAttempts = 4,
+            backoff = @Backoff(delay = 800)
+    )
     public SeatLockResult holdSeat(HoldSeatCommand command) {
 
         ErrorNotification errors = seatInventoryService.validate(command);

@@ -24,12 +24,14 @@ public class Payment extends BaseEntity {
     private UUID bookingId;
 
     private BigDecimal amount;
-    private String currency;          // ISO-4217 (USD, INR, EUR)
+    private String currency;
 
     private PaymentMethod paymentMethod;
     private PaymentStatus status;
+    private TranascationFor tranascationFor;
+    private Reason reason;
 
-    private String transactionId;// gateway txn id
+    private String transactionId;
 
     // JSONB response from payment gateway (Razorpay, Stripe, etc.)
     private Map<String, Object> gatewayResponse;

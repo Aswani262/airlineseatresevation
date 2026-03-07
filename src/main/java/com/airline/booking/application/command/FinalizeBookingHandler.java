@@ -4,12 +4,14 @@ import com.airline.booking.api.dto.ConfirmBookingResult;
 import com.airline.booking.application.command.dto.FinalizeBookingCommand;
 import com.airline.booking.domain.model.Booking;
 import com.airline.booking.domain.model.BookingSeat;
+import com.airline.booking.domain.model.BookingStage;
 import com.airline.booking.domain.model.BookingStatus;
 import com.airline.booking.exception.BookingNotFound;
 import com.airline.booking.integration.SeatInventoryIntegrationService;
 import com.airline.booking.repository.IBookingCommandRepository;
 import com.airline.booking.service.core.BookingCoreService;
 import com.airline.shared.annotation.ApplicationService;
+import com.airline.shared.events.BookingCancelledEvent;
 import com.airline.shared.events.BookingFinalizationFailedEvent;
 import com.airline.shared.service.EventPublisher;
 import lombok.RequiredArgsConstructor;
@@ -42,6 +44,9 @@ public class FinalizeBookingHandler implements FinalizeBookingUseCase {
                     .map(t -> new ConfirmBookingResult.TicketIssued(t.getPassengerId(), t.getTicketNumber()))
                     .collect(Collectors.toList());
             return new ConfirmBookingResult(bookingId, booking.getBookingReference(), "CONFIRMED", tickets);
+
+            //In the cases we got the payment success message after the payment time out is expired
+            //we need initiate the refund
         }
 
         List<UUID> seatTemplateIds = booking.getSeats().stream()

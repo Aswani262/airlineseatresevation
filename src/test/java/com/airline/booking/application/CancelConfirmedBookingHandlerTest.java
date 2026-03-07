@@ -1,12 +1,10 @@
 package com.airline.booking.application;
 
-import com.airline.booking.application.command.CancelConfirmedBookingHandler;
 import com.airline.booking.application.command.dto.CancelBookingCommand;
 import com.airline.booking.application.command.dto.CancelConfirmedBookingResult;
 import com.airline.booking.domain.model.Booking;
 import com.airline.booking.domain.model.BookingStatus;
 import com.airline.booking.exception.BookingCancelationFailedExcpetion;
-import com.airline.booking.exception.BookingNotFound;
 import com.airline.booking.repository.IBookingCommandRepository;
 import com.airline.booking.service.core.IBookingService;
 import com.airline.shared.events.BookingCancelledEvent;
